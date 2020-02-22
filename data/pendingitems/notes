@@ -1,0 +1,44 @@
+1. sorted concurrent map in golang
+2. read, write test
+3. measure one rec size
+4. get a better hash function
+3. tumbstone
+
+4. what is panic () ? ab-normal exit from program ? if yes, handle it with care  - //TODO - IMP
+5. Check if load index, recover wal read can be replaced with bufferedReader     - //TODO - IMP
+6. Merging of sst files
+8. check code improvement, add logger etc
+9. read write with remote request - add server client support
+10. common partition package - implement Drain - stop all connection, wait till all read/write complete, flush all data, don't allow any further communication till it re-started (or executing special command)
+
+
+
+ - read about connections
+ - how grpc is good when it creates new thread per connection ?
+
+
+
+ -IMP - pInfo when gets updated because of rollOver log file, and same time wal flush ticker runs, it doesn't see new file - because of memory sharing between cores
+ - Solution - use https://stackoverflow.com/questions/6807590/how-to-stop-a-goroutine, mean publish productInfo in a channel
+
+ - Does golang handles read/ write flush when read/write happens within lock
+
+
+
+
+ WriteSequence:
+
+ 1. WAL File - lock protected
+ 2. MemTable - Internally uses threadsafe skiplist
+
+ WAL file fills -
+
+ 1. lock
+
+    - get new file
+    - get old file details
+    - flush same to sst
+    - load index
+    - replace memtable
+
+ 2. Unlock
