@@ -37,7 +37,7 @@ type ManifestRec struct {
 var manifestFile *ManifestFile = nil
 
 func initManifest() (error) {
-	file, err := os.OpenFile(manifestFileName, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	file, err := os.OpenFile(manifestFileName, os.O_CREATE|os.O_RDWR|os.O_APPEND, os.ModePerm)
 	if err != nil {
 		panic("Error while opening or creating manifest file")
 		return err
@@ -48,7 +48,7 @@ func initManifest() (error) {
 	}
 	err = replay()
 	if err != nil {
-		panic("Error while reading manifest file")
+		panic(err)
 		return err
 	}
 	return nil
@@ -69,7 +69,7 @@ func write(manifestArr []ManifestRec) error { //TODO - when grows to a threshold
 	if _, err := manifestFile.file.Write(byteBuf); err != nil {
 		return err
 	}
-	if err := manifestFile.file.Sync(); err != nil {
+	if err := manifestFile.file.Sync(); err != nil { //test and remove this - already provided while creating file
 		return err
 	}
 	return nil

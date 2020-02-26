@@ -10,10 +10,8 @@ import (
 )
 
 var partitionInfoMap = make(map[int]*PartitionInfo)
-var memFlushQueue = make(chan int, 10)
-var MemFlushQueueWG = sync.WaitGroup{}
-
-//var walFlushQueue = make(chan int)//TODO - implement this
+var memFlushQueue = make(chan int, 100000)
+var MemFlushQueueWG = &sync.WaitGroup{}
 
 type PartitionInfo struct {
 	readLock  sync.RWMutex //1. (WLock)Modifying MemTable during write  2. (RLock) Reading MemTable & Index
@@ -32,10 +30,9 @@ type PartitionInfo struct {
 	// should have which wal file it's a part of,
 	// flush should happen without blocking others for long time
 
-	walFlushQueue chan int //TODO - check once
-
-	levelLock  sync.RWMutex
-	levelsInfo map[int]*LevelInfo //TODO - check lock used while accessing levelsInfo - readlock is in use now..IMP
+	levelLock    sync.RWMutex
+	levelsInfo   map[int]*LevelInfo //TODO - check lock used while accessing levelsInfo - readlock is in use now..IMP
+	sstReaderMap map[uint32]SSTReader
 
 	compactLock      sync.Mutex
 	activeCompaction *CompactInfo
@@ -59,7 +56,7 @@ type MemTableFlushRec struct {
 //TODO - dynamically decides partition and ranges
 //TODO - choose correct file name, sequence number etc for each writer i.e. wal, sst, index, etc
 
-func PreparePartitionIdsMap() (error) {
+func PreparePartitionIdsMap() error {
 
 	fmt.Println("Setting up DB")
 	initManifest()
@@ -78,7 +75,7 @@ func PreparePartitionIdsMap() (error) {
 			index:              sklist.New(),
 			memTable:           memTable,
 			inactiveLogDetails: make([]*InactiveLogDetails, 0, 10), //expecting max of 10 inactive memtable
-			walFlushQueue:      make(chan int),                     //with a buffer size of 0, it ensures unless one request completes another can not be enqueued
+			sstReaderMap:       make(map[uint32]SSTReader),
 		}
 
 		maxSSTSeq, err := loadPartitionData(partitionId)
@@ -115,16 +112,20 @@ func PreparePartitionIdsMap() (error) {
 	fmt.Println("DB Setup Done")
 	fmt.Println("--------------------------------")
 
-	go activateMemFlush()
+	go activateMemFlush() //TODO - must support multiple threads
 
 	//send signal to flush all inactive memtables
 	for _, pInfo := range partitionInfoMap {
 		pInfo.readLock.Lock()
 		for i := 0; i < len(pInfo.inactiveLogDetails); i++ {
+			fmt.Println("-- -- ", pInfo.inactiveLogDetails[i])
 			memFlushQueue <- pInfo.partitionId
 			MemFlushQueueWG.Add(1)
 		}
 		pInfo.readLock.Unlock()
+	}
+	for i := 0; i < defaultConstants.compactWorker; i++ {
+		go runCompactWorker()
 	}
 	return nil
 }
@@ -133,13 +134,13 @@ func newLevelInfo() map[int]*LevelInfo {
 	levelsInfo := make(map[int]*LevelInfo)
 	for lNo := 0; lNo <= defaultConstants.maxLevel; lNo++ {
 		levelsInfo[lNo] = &LevelInfo{
-			SSTReaderMap: make(map[uint32]SSTReader),
+			sstSeqNums: make(map[uint32]struct{}),
 		}
 	}
 	return levelsInfo
 }
 
-//TODO - do we need ticker for flush and queue to stop ticker...can it be merged
+//TODO - implement this post profiling
 func (pInfo *PartitionInfo) activatePeriodicWalFlush() {
 	ticker := time.NewTicker(defaultConstants.walFlushPeriodInSec)
 	go func() {
@@ -153,10 +154,10 @@ func (pInfo *PartitionInfo) activatePeriodicWalFlush() {
 					panic(err)
 				}
 				pInfo.writeLock.Unlock()
-			case <-pInfo.walFlushQueue:
-				fmt.Println("Received Req to stop periodic WAL flush for partId: ", pInfo.partitionId)
-				ticker.Stop()
-				return
+				//case <-pInfo.walFlushQueue:
+				//	fmt.Println("Received Req to stop periodic WAL flush for partId: ", pInfo.partitionId)
+				//	ticker.Stop()
+				//	return
 			}
 		}
 	}()
@@ -192,19 +193,20 @@ func PrintPartitionStats() {
 		fmt.Println("index size - ", pInfo.index.Length)
 
 		//print index data
-		iterator := pInfo.index.NewIterator()
 
-		for iterator.Next() {
+		//iterator := pInfo.index.NewIterator()
+
+/*		for iterator.Next() {
 			indexRec := iterator.Value().Value().(*IndexRec)
 			fmt.Println(indexRec)
 			iterator.Next()
 		}
-
+*/
 		fmt.Println("levelsInfo size - ", len(pInfo.levelsInfo))
 		for lno, levelInfo := range pInfo.levelsInfo { //TODO  - Do we need to put lock for levelsInfo //TODO - Check if go throws concurrent modification exception
 			fmt.Println("level_num - ", lno)
-			for _, sstReader := range levelInfo.SSTReaderMap {
-				fmt.Println("sstreader - ", sstReader)
+			for sstSeqNum := range levelInfo.sstSeqNums {
+				fmt.Println("sstreader - ", pInfo.sstReaderMap[sstSeqNum])
 			}
 		}
 	}
@@ -250,7 +252,6 @@ func GetNextLogSeq(partitionId int) uint32 {
 func Drain() {
 	for partitionId, pInfo := range partitionInfoMap {
 		fmt.Println(fmt.Sprintf("Closing all operation for partId: %d", partitionId))
-		pInfo.walFlushQueue <- 1 //2nd point
 
 		//3rd point
 		rolledOverLogDetails, logFlushErr := pInfo.logWriter.FlushAndClose()
@@ -264,8 +265,8 @@ func Drain() {
 		}
 
 		for _, levelInfo := range pInfo.levelsInfo { //TODO  - check lock for levels lock
-			for _, sstReader := range levelInfo.SSTReaderMap {
-				sstReader.Close()
+			for sstSeqNum := range levelInfo.sstSeqNums {
+				pInfo.sstReaderMap[sstSeqNum].Close()
 			}
 		}
 
@@ -287,28 +288,30 @@ func RestartAllOpr() {
 //2. send inactive_memtable_log info event to flush mem queue
 func Flush() {
 	waitGroup := &sync.WaitGroup{}
-	waitGroup.Add(len(partitionInfoMap))
-
+	waitGroup.Add(len(partitionInfoMap))//THIS is just to flush in parallel
+	//
 	for _, pInfo := range partitionInfoMap {
-		pInfo.flushPartition(waitGroup)
+		go pInfo.flushPartition(waitGroup)
 	}
 
+	//waitGroup.Wait()
+	fmt.Println(fmt.Sprintf("Flush and Rollover on request completed for all partitions, waiting for memflush to get complete.."))
 	waitGroup.Wait()
-	fmt.Println(fmt.Sprintf("Flush and Rollover on request completed for all partitions"))
 }
 
-func (pInfo *PartitionInfo) flushPartition(group *sync.WaitGroup) {
+func (pInfo *PartitionInfo) flushPartition(wg *sync.WaitGroup) {
 	pInfo.writeLock.Lock()
 	fmt.Println(fmt.Sprintf("Flush and Rollover on request, partId: %d", pInfo.partitionId))
 	rolledOverLogDetails, err := pInfo.logWriter.FlushAndRollOver()
 	if err != nil {
 		panic(err)
 	}
+	fmt.Println("rolledOverLogDetails1- ", rolledOverLogDetails)
 	if rolledOverLogDetails != nil && rolledOverLogDetails.WriteOffset > 0 {
 		pInfo.handleRolledOverLogDetails(rolledOverLogDetails)
 	}
-	group.Done()
 	pInfo.writeLock.Unlock()
+	wg.Done()
 }
 
 func GetPartitionId(key interface{}) int {

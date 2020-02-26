@@ -111,3 +111,12 @@ func getManifestRecs() []ManifestRec {
 
 	return []ManifestRec{m1, m2}
 }
+
+func TestInitManifest(t *testing.T) {
+	manifestFileName = "data/test_manifest"
+	if err := initManifest(); err != nil {
+		panic(err)
+	}
+	defer os.Remove(manifestFileName)
+	require.Nil(t, manifestFile.manifest, "Expected no manifest built on empty manifest file")
+}
