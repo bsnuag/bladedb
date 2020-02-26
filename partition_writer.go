@@ -102,6 +102,7 @@ func activateMemFlush() {
 			//throw error
 		}
 		inactiveLogDetails = pInfo.inactiveLogDetails[0]
+		fmt.Println(inactiveLogDetails)
 		pInfo.readLock.RUnlock()
 
 		println(inactiveLogDetails)
@@ -132,22 +133,20 @@ func activateMemFlush() {
 		//delete 0th pos
 		if len(pInfo.inactiveLogDetails) > 1 {
 			pInfo.readLock.Lock()
-			defer pInfo.readLock.Unlock() //TODO - defer in a loop
-			pInfo.inactiveLogDetails = append(pInfo.inactiveLogDetails[:0],
-				pInfo.inactiveLogDetails[1:]...)
+			pInfo.inactiveLogDetails = append(pInfo.inactiveLogDetails[:0], pInfo.inactiveLogDetails[1:]...)
+			pInfo.readLock.Unlock() //TODO - defer in a loop
 		}
 
 		//check for possible compaction
 		pInfo.levelLock.RLock()
 		levelInfo := pInfo.levelsInfo[0]
-		pInfo.levelLock.RUnlock()
-
-		if len(levelInfo.SSTReaderMap) >= 4 {
+		if len(levelInfo.sstSeqNums) >= 4 {
 			compactQueue <- &CompactInfo{
 				partitionId: pNum,
 				thisLevel:   0,
 			}
 		}
+		pInfo.levelLock.RUnlock()
 		MemFlushQueueWG.Done()
 	}
 }
@@ -166,7 +165,6 @@ func (pInfo *PartitionInfo) writeSSTAndIndex(memRecs *sklist.SkipList) {
 		indexRec := &IndexRec{
 			SSTRecOffset:  pInfo.sstWriter.Offset,
 			SSTFileSeqNum: pInfo.sstWriter.SeqNum,
-			SSTFileLevel:  0,
 			TS:            value.TS,
 		}
 		_, sstErr := pInfo.sstWriter.Write(value.Key, value.Value, value.TS, value.RecType)
@@ -201,7 +199,7 @@ func (pInfo *PartitionInfo) writeSSTAndIndex(memRecs *sklist.SkipList) {
 	//update sstReader map
 	pInfo.readLock.Lock()
 	pInfo.levelLock.Lock()
-	defer pInfo.levelLock.Lock()
+	defer pInfo.levelLock.Unlock()
 	defer pInfo.readLock.Unlock()
 
 	levelNum := 0
@@ -224,7 +222,8 @@ func (pInfo *PartitionInfo) writeSSTAndIndex(memRecs *sklist.SkipList) {
 	sstReader.endKey = endKey
 	sstReader.noOfWriteReq = noOfWriteReq
 	sstReader.noOfDelReq = noOfDelReq
-	levelInfo.SSTReaderMap[flushedFileSeqNum] = sstReader
+	levelInfo.sstSeqNums[flushedFileSeqNum] = struct{}{}
+	pInfo.sstReaderMap[flushedFileSeqNum] = sstReader
 }
 
 /*//writes the unclosed wal file to new wal file and memtable

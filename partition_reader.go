@@ -45,17 +45,11 @@ func Get(key string) []byte {
 
 	pInfo.levelLock.RLock()
 
-	levelInfo := pInfo.levelsInfo[indexRec.SSTFileLevel]
-	if levelInfo == nil {
-		fmt.Printf("Could not find %d level info in partition\n", indexRec.SSTFileLevel)
-		return nil
-	}
 	var sstReader SSTReader = SSTReader{}
-	if _, ok := levelInfo.SSTReaderMap[indexRec.SSTFileSeqNum]; ok {
-		sstReader = levelInfo.SSTReaderMap[indexRec.SSTFileSeqNum]
+	if _, ok := pInfo.sstReaderMap[indexRec.SSTFileSeqNum]; ok {
+		sstReader = pInfo.sstReaderMap[indexRec.SSTFileSeqNum]
 	} else {
-		fmt.Printf("Could not find sstReader for seqNum %d under level %d in partition\n",
-			indexRec.SSTFileSeqNum, indexRec.SSTFileLevel)
+		fmt.Printf("Could not find sstReader for seqNum %d in partition\n", indexRec.SSTFileSeqNum)
 		return nil
 	}
 	stableRec, err := sstReader.ReadRec(int64(indexRec.SSTRecOffset))

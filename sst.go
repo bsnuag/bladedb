@@ -12,7 +12,6 @@ import (
 type IndexRec struct {
 	SSTRecOffset  uint32 //considering max sst file size 160MB = 1.6e+8 Bytes
 	SSTFileSeqNum uint32 //sst files will have a seq num
-	SSTFileLevel  int    //sst files are arranged in levels - leveled compaction
 	TS            int64  //TS - helpful for TTL, new write load
 }
 

@@ -50,6 +50,7 @@ type Constants struct {
 	maxSSTCompact int
 	minSSTCompact int
 	levelMaxSST   map[int]uint32
+	compactWorker int
 }
 
 var defaultConstants = Constants{
@@ -64,8 +65,8 @@ var defaultConstants = Constants{
 	sstFileType:         1,
 	logFileStartOffset:  0,
 	walFlushPeriodInSec: 10,
-	maxLevel:            3,
-	noOfPartitions:      1,
+	maxLevel:            6,
+	noOfPartitions:      100,
 	maxSSTSize:          64e+6, //64 MB
 	SSTDir:              "data/dbstore/",
 	maxSSTCompact:       32, //soft value
@@ -74,6 +75,10 @@ var defaultConstants = Constants{
 		0: 4,
 		1: 100,
 		2: 1000,
-		3: 0, //infinite
+		3: 10000,
+		4: 100000,
+		5: 1000000,
+		6: 0, //infinite
 	},
+	compactWorker: 2,
 }

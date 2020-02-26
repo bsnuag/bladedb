@@ -3,16 +3,11 @@ package bladedb
 import (
 	"crypto/sha256"
 	"fmt"
-	"io/ioutil"
-	"log"
-	"regexp"
-	"strconv"
-	"strings"
 )
 //expected file format - wal_seqNum_partitionId
 //returns seqNum+1 if file with seqNum 0 or greater present else 0
 
-//TODO - This has to replace, nextSeq num must be atomic - cannot read directory each time
+/*//TODO - This has to replace, nextSeq num must be atomic - cannot read directory each time
 func GetFileNextSeqNum(partitionId int, fileDir string, filePattern string) (uint32, error) {
 	files, err := ioutil.ReadDir(fileDir)
 	if err != nil {
@@ -40,7 +35,7 @@ func GetFileNextSeqNum(partitionId int, fileDir string, filePattern string) (uin
 		}
 	}
 	return seqNum+1, nil
-}
+}*/
 
 func GetHash(input []byte) (string, error) {
 	h := sha256.New()
