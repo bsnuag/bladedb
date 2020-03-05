@@ -62,8 +62,8 @@ func (list *SkipList) Get(key string) *Element {
 		next = prev.next[i]
 
 		for next != nil && key > next.key {
-			//prev = &next.elementNode
-			next = next.next[i]
+			prev = &next.elementNode
+			next = next.elementNode.next[i]
 		}
 	}
 

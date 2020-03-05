@@ -331,7 +331,7 @@ func TestBuildCompactionBaseLevelAs1(t *testing.T) {
 		file: mFile,
 	}
 	// update SSTDir to temp directory
-	defaultConstants.SSTDir = dir
+	SSTDir = dir
 	partitionInfoMap[partitionId] = &PartitionInfo{
 		partitionId:  partitionId,
 		levelsInfo:   newLevelInfo(),
@@ -370,7 +370,7 @@ func TestBuildCompactionBaseLevelAs1(t *testing.T) {
 	require.Equal(t, 0, len(manifestFile.manifest.logManifest[partitionId].manifestRecs),
 		"logManifest length should be zero")
 
-	require.Equal(t, 0, len(compactInfo.newSSTFileSeq), "expecting no new ssts post compaction")
+	require.Equal(t, 0, len(compactInfo.newSSTReaders), "expecting no new ssts post compaction")
 	for _, mRec := range manifestFile.manifest.sstManifest[partitionId].manifestRecs {
 		require.Equal(t, 2, mRec.levelNum, "level upgrade should happen if no overlap in top level")
 	}
@@ -382,7 +382,7 @@ func TestBuildCompactionBaseLevelAs0(t *testing.T) {
 	if err != nil {
 		log.Fatal(err)
 	}
-	defaultConstants.SSTDir = dir
+	SSTDir = dir
 	partitionInfoMap[partitionId] = &PartitionInfo{
 		partitionId: partitionId,
 		index:       sklist.New(),
@@ -402,11 +402,11 @@ func TestBuildCompactionBaseLevelAs0(t *testing.T) {
 
 	compactInfo.compact()
 	require.Equal(t, 0, compactInfo.heap.Len(), "Heap size should be zero post compaction")
-	require.Equal(t, 1, len(compactInfo.newSSTFileSeq), "Expecting only one new SST file post compaction")
+	require.Equal(t, 1, len(compactInfo.newSSTReaders), "Expecting only one new SST file post compaction")
 
 	actualKeyOrder := make([]string, 0, 100)
 	sstRecCount := 0
-	reader, _ := NewSSTReader(compactInfo.newSSTFileSeq[0], partitionId)
+	reader, _ := NewSSTReader(compactInfo.newSSTReaders[0].SeqNm, partitionId)
 	for {
 		if n, rec := reader.readNext(); n != 0 {
 			actualKeyOrder = append(actualKeyOrder, string(rec.key))
@@ -452,7 +452,8 @@ func prepareInputSSTs(dir string, partitionId int) (SSTReader, SSTReader) {
 	//fmt.Println("SST-1 Data..")
 	iterator := memTable.Recs().NewIterator()
 	for iterator.Next() {
-		mRec := iterator.Value().Value().(*memstore.MemRec)
+		next := iterator.Value()
+		mRec := next.Value().(*memstore.MemRec)
 		sstWriter1.Write(mRec.Key, mRec.Value, mRec.TS, mRec.RecType)
 		writeCount1++
 		if sKe1 == "" {
@@ -477,7 +478,8 @@ func prepareInputSSTs(dir string, partitionId int) (SSTReader, SSTReader) {
 	//fmt.Println("\n\nSST-2 Data..")
 	iterator = memTable.Recs().NewIterator()
 	for iterator.Next() {
-		mRec := iterator.Value().Value().(*memstore.MemRec)
+		next := iterator.Value()
+		mRec := next.Value().(*memstore.MemRec)
 		sstWriter2.Write(mRec.Key, mRec.Value, mRec.TS, mRec.RecType)
 		deleteCount2++
 		if sKey2 == "" {

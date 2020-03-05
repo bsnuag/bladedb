@@ -2,27 +2,6 @@ package bladedb
 
 import "time"
 
-//const WriteReq byte = 0
-//const DeleteReq byte = 1
-//
-//const LogStatRecLen = 4     // bytes
-//const LogFileMaxLen = 32e+6 //32MB
-//const LogRecLen = 5
-//
-//const MarkLogFileDelete = 1
-//const MarkLogFileNew = 0
-//
-//const LogFileStartOffset = 0
-//const walFlushPeriodInSec = 10
-//
-//const MaxLevel = 2 //max SST levels (0,1,2)
-//
-//const noOfPartitions = 1 // should be handled properly when adding multiple nodes
-//
-//const MaxSSTSize = 64e+6
-//
-//var SSTDir = "data/dbstore/"
-
 type Constants struct {
 	writeReq  byte
 	deleteReq byte
@@ -46,11 +25,12 @@ type Constants struct {
 
 	maxSSTSize uint32
 
-	SSTDir        string
-	maxSSTCompact int
-	minSSTCompact int
-	levelMaxSST   map[int]uint32
-	compactWorker int
+	maxSSTCompact  int
+	minSSTCompact  int
+	levelMaxSST    map[int]uint32
+	compactWorker  int
+	compactActive  bool
+	memFlushWorker int
 }
 
 var defaultConstants = Constants{
@@ -66,11 +46,10 @@ var defaultConstants = Constants{
 	logFileStartOffset:  0,
 	walFlushPeriodInSec: 10,
 	maxLevel:            6,
-	noOfPartitions:      100,
+	noOfPartitions:      8,
 	maxSSTSize:          64e+6, //64 MB
-	SSTDir:              "data/dbstore/",
-	maxSSTCompact:       32, //soft value
-	minSSTCompact:       16, //TODO - can we make it % based ..? 10 % of total SST ??
+	maxSSTCompact:       32,    //soft value
+	minSSTCompact:       16,    //TODO - can we make it % based ..? 10 % of total SST ??
 	levelMaxSST: map[int]uint32{
 		0: 4,
 		1: 100,
@@ -80,5 +59,7 @@ var defaultConstants = Constants{
 		5: 1000000,
 		6: 0, //infinite
 	},
-	compactWorker: 2,
+	compactWorker:  8,
+	compactActive:  true,
+	memFlushWorker: 8,
 }

@@ -9,81 +9,18 @@ import (
 	"os"
 )
 
-/*
-This is limited to add check-pointing to log file
-TODO - This can be removed
-*/
-
 type LogReader struct {
 	file       *os.File
 	fileReader *bufio.Reader
 }
 
-/*func NewReader() (*LogReader, error) {
-	var fileName = getNextFile("") //initially fileName is blank
-
-	if len(fileName) == 0 {
-		panic(fmt.Sprintf("No commit log files to read"))
-		return nil, errors.New("no commit log files to read")
-	}
-
-	file, err := os.Open(fileName)
-	if err != nil {
-		panic(fmt.Sprintf("Error while opening commit log file %v", err))
-		return nil, err
-	}
-
-	logReader := &LogReader{
-		file:       file,
-		fileReader: bufio.NewReader(file),
-	}
-	return logReader, nil
-}
-
-var dir = "commitlog/"
-var logFileNames []string //remove it, always return next fileName by scanning directory
-
-//can be optimised to not use listFiles() always
-// when machine boots due to failure and recover needed, it needs to know the last log file
-func getNextFile(currFileName string) string {
-	listFiles()
-	var in = -1
-	for e := range logFileNames {
-		if logFileNames[e] == currFileName {
-			in = e
-			break
-		}
-	}
-	if in == len(logFileNames)-1 {
-		return ""
-	}
-	return logFileNames[in+1]
-}*/
-
-/*func listFiles() {
-	files, err := ioutil.ReadDir(dir)
-	if err != nil {
-		log.Fatal(err)
-	}
-	logFileNames = nil
-	var in = 0
-	for _, f := range files {
-		matched, _ := regexp.Match(`log_[0-9]{19}.*log`, []byte(f.Name()))
-		if matched {
-			logFileNames[in] = f.Name()
-			in++
-		}
-	}
-	sort.Strings(logFileNames)
-}*/
-
 func deleteLog(partitionId int, seqNum uint32) error {
-	fileName := baseFileName + fmt.Sprintf("%d_%d", seqNum, partitionId) + fileExt
+	fileName := LogDir + fmt.Sprintf(LogBaseFileName, seqNum, partitionId)
 	return os.Remove(fileName)
 }
 
 func newLogReader(partitionId int, seqNum uint32) (*LogReader, error) {
-	fileName := baseFileName + fmt.Sprintf("%d_%d", seqNum, partitionId) + fileExt
+	fileName := LogDir + fmt.Sprintf(LogBaseFileName, seqNum, partitionId)
 	file, err := os.OpenFile(fileName, os.O_RDONLY, 0644)
 
 	if err != nil {

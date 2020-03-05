@@ -11,8 +11,8 @@ import (
 	"os"
 )
 
-var baseFileName = "data/commitlog/log_"
-var fileExt = ".log"
+var LogDir = "data/commitlog"
+var LogBaseFileName = "/log_%d_%d.log"
 
 /*
 	LogRecord - record to be inserted into log-commit files
@@ -69,7 +69,7 @@ type InactiveLogDetails struct {
 }
 
 func newLogWriter(partitionId int, seqNum uint32) (*LogWriter, error) {
-	fileName := baseFileName + fmt.Sprintf("%d_%d", seqNum, partitionId) + fileExt
+	fileName := LogDir + fmt.Sprintf(LogBaseFileName, seqNum, partitionId)
 	file, err := os.OpenFile(fileName, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0644)
 
 	if err != nil {
@@ -130,7 +130,7 @@ func (writer *LogWriter) rollover() (*InactiveLogDetails, error) {
 	if err != nil {
 		panic(err)
 	}
-	fmt.Printf("Rolling over from: %v to: %v\n", writer.file.Name(), newLogWriter.LogFileName())
+	fmt.Println(LogRollingMsg, writer.file.Name(), newLogWriter.LogFileName())
 	//flush content of buffer to disk and close file
 	inactiveLogDetails, err := writer.FlushAndClose()
 
@@ -149,7 +149,7 @@ func (writer *LogWriter) rollover() (*InactiveLogDetails, error) {
 		fop:         defaultConstants.fileCreate,
 		fileType:    defaultConstants.logFileType,
 	}
-	write([]ManifestRec{mf1})
+	writeManifest([]ManifestRec{mf1})
 	return inactiveLogDetails, nil
 }
 
@@ -163,7 +163,6 @@ func (writer *LogWriter) FlushAndRollOver() (*InactiveLogDetails, error) {
 
 //Flush, Sync, Close
 func (writer *LogWriter) FlushAndClose() (*InactiveLogDetails, error) {
-	fmt.Printf("Closing file: %s\n", writer.file.Name())
 	var inactiveLogDetails *InactiveLogDetails = nil
 
 	//flush content of buffer to disk and close file
@@ -186,7 +185,6 @@ func (writer *LogWriter) FlushAndClose() (*InactiveLogDetails, error) {
 }
 
 func (writer *LogWriter) FlushAndSync() error {
-	fmt.Println(fmt.Sprintf("Flushing wal file: %s", writer.file.Name()))
 
 	if err := writer.fileWriter.Flush(); err != nil {
 		return err

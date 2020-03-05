@@ -8,7 +8,7 @@ import (
 	"sync"
 )
 
-var manifestFileName = "data/MANIFEST"
+var ManifestFileName = "data/MANIFEST"
 var manifestRecLen = 50
 
 type ManifestFile struct {
@@ -19,7 +19,7 @@ type ManifestFile struct {
 
 type Manifest struct {
 	sstManifest map[int]ManifestRecs //partId -> ManifestRec
-	logManifest map[int]ManifestRecs //TODO - implement - remove logstatwriter
+	logManifest map[int]ManifestRecs
 }
 
 type ManifestRecs struct {
@@ -37,7 +37,7 @@ type ManifestRec struct {
 var manifestFile *ManifestFile = nil
 
 func initManifest() (error) {
-	file, err := os.OpenFile(manifestFileName, os.O_CREATE|os.O_RDWR|os.O_APPEND, os.ModePerm)
+	file, err := os.OpenFile(ManifestFileName, os.O_CREATE|os.O_RDWR|os.O_APPEND, os.ModePerm)
 	if err != nil {
 		panic("Error while opening or creating manifest file")
 		return err
@@ -54,8 +54,20 @@ func initManifest() (error) {
 	return nil
 }
 
+func closeManifest() (error) {
+	if manifestFile == nil || manifestFile.file == nil {
+		manifestFile = nil
+		return nil
+	}
+	if err := manifestFile.file.Close(); err != nil { //do we need to sync or close is enough?
+		return err
+	}
+	manifestFile = nil
+	return nil
+}
+
 //https://blog.cloudflare.com/recycling-memory-buffers-in-go/
-func write(manifestArr []ManifestRec) error { //TODO - when grows to a threshold - re-write info
+func writeManifest(manifestArr []ManifestRec) error { //TODO - when grows to a threshold - re-writeManifest info
 	manifestFile.mutex.Lock()
 	defer manifestFile.mutex.Unlock()
 
@@ -75,7 +87,7 @@ func write(manifestArr []ManifestRec) error { //TODO - when grows to a threshold
 	return nil
 }
 
-func replay() error { //TODO - TEST is failing
+func replay() error {
 	manifestFile.file.Seek(0, 0)
 	manifest := Manifest{
 		sstManifest: make(map[int]ManifestRecs),
