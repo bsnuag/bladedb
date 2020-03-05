@@ -29,7 +29,7 @@ func TestManifestReplay(t *testing.T) {
 	}
 	manifestRecs := getManifestRecs()
 
-	err = write(manifestRecs)
+	err = writeManifest(manifestRecs)
 	if err != nil {
 		panic(err)
 	}
@@ -60,7 +60,7 @@ func TestManifestWrite(t *testing.T) {
 		file: file,
 	}
 	manifestRecs := getManifestRecs()
-	write(manifestRecs)
+	writeManifest(manifestRecs)
 
 	file.Seek(0, 0)
 	b1 := make([]byte, 50)
@@ -113,10 +113,13 @@ func getManifestRecs() []ManifestRec {
 }
 
 func TestInitManifest(t *testing.T) {
-	manifestFileName = "data/test_manifest"
+	ManifestFileName = "data/test_manifest"
 	if err := initManifest(); err != nil {
 		panic(err)
 	}
-	defer os.Remove(manifestFileName)
+	defer func() {
+		os.Remove(ManifestFileName)
+		manifestFile = nil
+	}()
 	require.Nil(t, manifestFile.manifest, "Expected no manifest built on empty manifest file")
 }

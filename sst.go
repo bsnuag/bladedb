@@ -12,10 +12,9 @@ import (
 type IndexRec struct {
 	SSTRecOffset  uint32 //considering max sst file size 160MB = 1.6e+8 Bytes
 	SSTFileSeqNum uint32 //sst files will have a seq num
-	TS            int64  //TS - helpful for TTL, new write load
+	TS            int64  //TS - helpful for TTL
 }
 
-//TODO - next implement compaction
 type SSTRec struct {
 	key  []byte
 	val  []byte
@@ -23,18 +22,17 @@ type SSTRec struct {
 }
 
 type SSTRecMeta struct {
-	recType  byte //write or tombstomb
+	recType  byte //write or tombstone
 	ts       int64
-	checksum int64 //check logic for checksum
+	checksum int64 //TODO - impl checksum
 }
 
 var SST_HEADER_LEN uint32 = 5
 //var SST_TABLE_MAX_LEN int64 = 1024
 //var maxSSTRecLen = 1024 //TODO - decide a proper len
 
-//var SSTFileFormat = "sst_%d_[0-9]+_[0-9]+\\.sst"
-
-var SSTBaseFileName = "sst_%d_%d.sst"
+var SSTDir = "data/dbstore"
+var SSTBaseFileName = "/sst_%d_%d.sst"
 
 //filename format - sst_partitionId_levelNo_sstSeqNum.sst TODO - make changes in all places
 //one file for each partition
@@ -48,6 +46,11 @@ type SSTWriter struct {
 	partitionId int    //which partition this sst belongs to
 	SeqNum      uint32 // seqNum of sst file
 	Offset      uint32
+
+	startKey     []byte
+	endKey       []byte
+	noOfDelReq   uint64
+	noOfWriteReq uint64
 }
 
 func (pInfo *PartitionInfo) NewSSTWriter() (*SSTWriter, error) {
@@ -56,7 +59,7 @@ func (pInfo *PartitionInfo) NewSSTWriter() (*SSTWriter, error) {
 
 func NewSSTWriter(partitionId int, seqNum uint32) (*SSTWriter, error) {
 
-	fileName := defaultConstants.SSTDir + fmt.Sprintf(SSTBaseFileName, partitionId, seqNum)
+	fileName := SSTDir + fmt.Sprintf(SSTBaseFileName, partitionId, seqNum)
 	file, err := os.OpenFile(fileName, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
 
 	if err != nil {
@@ -66,7 +69,7 @@ func NewSSTWriter(partitionId int, seqNum uint32) (*SSTWriter, error) {
 
 	sstWriter := &SSTWriter{
 		file:        file,
-		writer:      bufio.NewWriter(file),
+		writer:      bufio.NewWriterSize(file, 1000000), //TODO - take size as an arg
 		partitionId: partitionId,
 		SeqNum:      seqNum,
 	}
@@ -111,20 +114,6 @@ func (writer *SSTWriter) FlushAndClose() (uint32, error) {
 		}
 	}
 	oldSeqNum = writer.SeqNum
-	//writer.SeqNum++
-
-	//fileName := baseFileName + fmt.Sprintf("%d_%d", writer.seqNum, writer.partitionId) + fileExt
-	//file, err := os.OpenFile(fileName, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
-	//
-	//if err != nil {
-	//	panic("Error while opening or creating sst file")
-	//	return err
-	//}
-	//
-	//writer.file = file
-	//writer.writer = bufio.NewWriter(file)
-	//writer.offset = 0
-
 	return oldSeqNum, nil
 }
 
@@ -154,7 +143,7 @@ type SSTReaderMeta struct {
 //TODO - this can be removed - improve code - design pattern + naming convention
 func NewSSTReader(seqNum uint32, partitionId int) (SSTReader, error) {
 
-	fileName := defaultConstants.SSTDir + fmt.Sprintf(SSTBaseFileName, partitionId, seqNum)
+	fileName := SSTDir + fmt.Sprintf(SSTBaseFileName, partitionId, seqNum)
 	fmt.Println(fmt.Sprintf("FileName for given seqNum: %d and partitionId: %d is %s", seqNum,
 		partitionId, fileName))
 
@@ -166,7 +155,7 @@ func NewSSTReader(seqNum uint32, partitionId int) (SSTReader, error) {
 }
 
 func GetSSTReader(fileName string, sstFileSeqNum uint32, partitionId int) (SSTReader, error) {
-	file, err := os.OpenFile(fileName, os.O_RDONLY, 0644)
+	file, err := os.OpenFile(fileName, os.O_RDONLY, 0644) //TODO - can be moved to fileutils - a common place
 	if err != nil {
 		panic("Error while opening or creating sst file, fileName: " + fileName)
 		return SSTReader{}, err
@@ -286,17 +275,7 @@ func (reader SSTReader) Close() error {
 	return reader.file.Close()
 }
 
-//close sst and delete
-func (reader SSTReader) closeAndDelete() {
-	if err := reader.Close(); err != nil {
-		panic(err)
-	}
-	if err := deleteSST(reader.partitionId, reader.SeqNm); err != nil {
-		panic(err)
-	}
-}
-
 func deleteSST(partitionId int, seqNum uint32) error { //TODO - if file doesn't exists then error ?
-	fileName := defaultConstants.SSTDir + fmt.Sprintf(SSTBaseFileName, partitionId, seqNum)
+	fileName := SSTDir + fmt.Sprintf(SSTBaseFileName, partitionId, seqNum)
 	return os.Remove(fileName)
 }
