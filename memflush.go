@@ -83,6 +83,7 @@ func (pInfo *PartitionInfo) writeSSTAndIndex(memRecs *sklist.SkipList) (seqNum u
 	if err != nil {
 		panic(err)
 	}
+	idxmap := make(map[string]interface{})
 	//flush memRecs to SST and index
 	iterator := memRecs.NewIterator()
 	for iterator.Next() {
@@ -101,7 +102,7 @@ func (pInfo *PartitionInfo) writeSSTAndIndex(memRecs *sklist.SkipList) (seqNum u
 		//if rec type is writeReq then load to index, delete request need not load to index
 		if value.RecType == defaultConstants.writeReq {
 			keyHash, _ := GetHash(value.Key)
-			pInfo.index.Set(keyHash, indexRec)
+			idxmap[keyHash] = indexRec
 			noOfWriteReq++
 		} else {
 			noOfDelReq++
@@ -119,7 +120,8 @@ func (pInfo *PartitionInfo) writeSSTAndIndex(memRecs *sklist.SkipList) (seqNum u
 		fmt.Println("Error while flushing data sst")
 		panic(err)
 	}
-
+	//update index
+	pInfo.index.SetBatch(idxmap)
 	//update sstReader map
 	pInfo.readLock.Lock()
 	pInfo.levelLock.Lock()
