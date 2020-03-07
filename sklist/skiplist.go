@@ -49,6 +49,37 @@ func (list *SkipList) Set(key string, value interface{}) *Element {
 	return element
 }
 
+//set in batch - acquire lock once
+func (list *SkipList) SetBatch(kvpairs map[string]interface{}) {
+	list.mutex.Lock()
+	defer list.mutex.Unlock()
+
+	for key, value := range kvpairs {
+		var element *Element
+		prevs := list.getPrevElementNodes(key)
+
+		if element = prevs[0].next[0]; element != nil && element.key <= key {
+			element.value = value
+			return
+		}
+
+		element = &Element{
+			elementNode: elementNode{
+				next: make([]*Element, list.randLevel()),
+			},
+			key:   key,
+			value: value,
+		}
+
+		for i := range element.next {
+			element.next[i] = prevs[i].next[i]
+			prevs[i].next[i] = element
+		}
+
+		list.Length++
+	}
+}
+
 // Get finds an element by key. It returns element pointer if found, nil if not found.
 // Locking is optimistic and happens only after searching with a fast check for deletion after locking.
 func (list *SkipList) Get(key string) *Element {
@@ -73,7 +104,6 @@ func (list *SkipList) Get(key string) *Element {
 
 	return nil
 }
-
 
 // Remove deletes an element from the list.
 // Returns removed element pointer if found, nil if not found.
