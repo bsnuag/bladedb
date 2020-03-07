@@ -234,8 +234,8 @@ func TestFillLevels_level1WithOverlapButNoLevel2Data(t *testing.T) {
 	defaultConstants.levelMaxSST[level] = 1
 	levelsInfo := newLevelInfo()
 	pInfo := &PartitionInfo{
-		partitionId: partId,
-		levelsInfo:  levelsInfo,
+		partitionId:  partId,
+		levelsInfo:   levelsInfo,
 		sstReaderMap: make(map[uint32]SSTReader),
 	}
 
@@ -337,10 +337,8 @@ func TestBuildCompactionBaseLevelAs1(t *testing.T) {
 		levelsInfo:   newLevelInfo(),
 		index:        sklist.New(),
 		sstReaderMap: make(map[uint32]SSTReader),
-		partitionMeta: &PartitionMeta{
-			sstSeq: 100,
-			walSeq: 0,
-		},
+		sstSeq:       100,
+		walSeq:       0,
 	}
 	compactInfo := initCompactInfo(1, partitionId)
 	sReader1, sReader2 := prepareInputSSTs(dir, partitionId)
@@ -384,13 +382,11 @@ func TestBuildCompactionBaseLevelAs0(t *testing.T) {
 	}
 	SSTDir = dir
 	partitionInfoMap[partitionId] = &PartitionInfo{
-		partitionId: partitionId,
-		index:       sklist.New(),
+		partitionId:  partitionId,
+		index:        sklist.New(),
 		sstReaderMap: make(map[uint32]SSTReader),
-		partitionMeta: &PartitionMeta{
-			sstSeq: 100,
-			walSeq: 0,
-		},
+		sstSeq: 100,
+		walSeq: 0,
 	}
 	compactInfo := initCompactInfo(0, partitionId)
 	sReader1, sReader2 := prepareInputSSTs(dir, partitionId)

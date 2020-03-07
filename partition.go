@@ -5,6 +5,7 @@ import (
 	"bladedb/sklist"
 	"fmt"
 	"sync"
+	"sync/atomic"
 )
 
 var partitionInfoMap = make(map[int]*PartitionInfo)
@@ -14,10 +15,10 @@ type PartitionInfo struct {
 	writeLock sync.Mutex   //1. Modifying WAL & MemTable
 
 	partitionId int
+	walSeq      uint32
+	sstSeq      uint32
 
 	logWriter *LogWriter
-
-	partitionMeta *PartitionMeta
 
 	index              *sklist.SkipList //key(hash) - sstMetadata
 	memTable           *memstore.MemTable
@@ -68,6 +69,8 @@ func PreparePartitionIdsMap() error {
 			compactLock:        sync.Mutex{},
 		}
 
+		partitionInfoMap[partitionId] = pInfo
+
 		maxSSTSeq, err := loadPartitionData(partitionId)
 		if err != nil {
 			fmt.Println(err)
@@ -80,10 +83,8 @@ func PreparePartitionIdsMap() error {
 			return err
 		}
 
-		pInfo.partitionMeta = &PartitionMeta{
-			sstSeq: maxSSTSeq,
-			walSeq: maxLogSeq,
-		}
+		pInfo.sstSeq = maxSSTSeq
+		pInfo.walSeq = maxLogSeq
 
 		nextLogSeq := pInfo.getNextLogSeq()
 		logWriter, err := newLogWriter(partitionId, nextLogSeq)
@@ -94,9 +95,7 @@ func PreparePartitionIdsMap() error {
 		}
 
 		pInfo.logWriter = logWriter
-
 		pInfo.loadUnclosedLogFile()
-		partitionInfoMap[partitionId] = pInfo
 	}
 	fmt.Println("DB Setup Done")
 
@@ -141,23 +140,11 @@ func flushPendingMemTables() {
 }*/
 
 func (pInfo *PartitionInfo) getNextSSTSeq() uint32 {
-	meta := pInfo.partitionMeta
-
-	meta.lock.Lock()
-	defer meta.lock.Unlock()
-
-	meta.sstSeq++ //this can be replaced with atomic counter
-	return meta.sstSeq
+	return atomic.AddUint32(&pInfo.sstSeq, 1)
 }
 
 func (pInfo *PartitionInfo) getNextLogSeq() uint32 {
-	meta := pInfo.partitionMeta
-
-	meta.lock.Lock()
-	defer meta.lock.Unlock()
-
-	meta.walSeq++
-	return meta.walSeq
+	return atomic.AddUint32(&pInfo.walSeq, 1)
 }
 
 func closeAllActiveSSTReaders() {
