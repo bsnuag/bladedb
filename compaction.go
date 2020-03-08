@@ -7,6 +7,7 @@ import (
 	"os"
 	"sort"
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
@@ -96,32 +97,30 @@ func (compactInfo *CompactInfo) sortInputSST() {
 	})
 }
 
-var compactTaskQueue = make(chan *CompactInfo, 50) //TODO - change channel type to compactTask with pId and thisLevel
-var compactMutex sync.RWMutex
+var compactTaskQueue = make(chan *CompactInfo, 10000) //TODO - change channel type to compactTask with pId and thisLevel
 var compactSubscriber sync.WaitGroup
 var compactActive = defaultConstants.compactActive //replace with atomic operation
 
 //publish new task to compact queue if compaction is active(compactActive==true)
 func publishCompactTask(compactTask *CompactInfo) {
-	compactMutex.RLock()
-	defer compactMutex.RUnlock()
-
-	if compactActive {
+	if isCompactionActive() {
 		compactTaskQueue <- compactTask
 	} else {
 		fmt.Println("Compaction is not active, cannot publish new task")
 	}
 }
 
+func isCompactionActive() bool {
+	return compactActive == 1
+}
+
 //blocks from accepting new compact tasks, but waits to complete already submitted tasks
 func stopCompactWorker() {
 	s := time.Now()
 	fmt.Println("Request received to stop compact workers")
-	compactMutex.Lock()
-	compactActive = false
+	atomic.AddInt32(&compactActive, -1)
 	close(compactTaskQueue)
 	fmt.Println("No new compaction task would be taken, already published tasks will be completed")
-	compactMutex.Unlock()
 
 	fmt.Println("Waiting for all submitted compaction tasks to be completed")
 	compactSubscriber.Wait()
@@ -197,10 +196,9 @@ func compactWorker(workerName string) {
 }
 
 func (pInfo *PartitionInfo) checkAndCompleteCompaction(level int) {
-	pInfo.levelLock.RLock()
 	pInfo.compactLock.Lock()
-	defer pInfo.compactLock.Unlock()
-	defer pInfo.levelLock.RUnlock()
+	pInfo.activeCompaction = nil //complete compaction
+	pInfo.compactLock.Unlock()
 
 	if level != defaultConstants.maxLevel && len(pInfo.levelsInfo[level].sstSeqNums) > int(defaultConstants.levelMaxSST[level]) {
 		publishCompactTask(&CompactInfo{
@@ -208,7 +206,6 @@ func (pInfo *PartitionInfo) checkAndCompleteCompaction(level int) {
 			thisLevel:   level,
 		})
 	}
-	pInfo.activeCompaction = nil //complete compaction
 }
 
 func (compactInfo *CompactInfo) compact() {
@@ -656,13 +653,10 @@ func initCompactInfo(level int, partId int) *CompactInfo {
 }
 
 func (pInfo *PartitionInfo) level0PossibleCompaction() {
-	pInfo.levelLock.RLock()
-	levelInfo := pInfo.levelsInfo[0] //TODO - wil it cause issue without lock ?
-	if len(levelInfo.sstSeqNums) >= 4 {
+	if len(pInfo.levelsInfo[0].sstSeqNums) >= 4 {
 		publishCompactTask(&CompactInfo{
 			partitionId: pInfo.partitionId,
 			thisLevel:   0,
 		})
 	}
-	pInfo.levelLock.RUnlock()
 }

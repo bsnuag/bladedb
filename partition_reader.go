@@ -1,6 +1,7 @@
 package bladedb
 
 import (
+	"errors"
 	"fmt"
 )
 
@@ -43,18 +44,7 @@ func Get(key string) []byte {
 		return nil
 	}
 
-	pInfo.levelLock.RLock()
-
-	var sstReader SSTReader = SSTReader{}
-	if _, ok := pInfo.sstReaderMap[indexRec.SSTFileSeqNum]; ok {
-		sstReader = pInfo.sstReaderMap[indexRec.SSTFileSeqNum]
-	} else {
-		fmt.Printf("Could not find sstReader for seqNum %d in partition\n", indexRec.SSTFileSeqNum)
-		return nil
-	}
-	stableRec, err := sstReader.ReadRec(int64(indexRec.SSTRecOffset))
-
-	pInfo.levelLock.RUnlock()
+	stableRec, err := pInfo.getFromSST(indexRec.SSTFileSeqNum, indexRec.SSTRecOffset)
 
 	if err != nil {
 		fmt.Println(fmt.Sprintf("error while reading sst record for indexRec: %v", indexRec))
@@ -64,4 +54,18 @@ func Get(key string) []byte {
 	fmt.Println(fmt.Sprintf("sstRec: %v", stableRec))
 	fmt.Println("---------------------------------------")
 	return nil
+}
+
+func (pInfo *PartitionInfo) getFromSST(sNum uint32, offset uint32) (*SSTRec, error) {
+	pInfo.levelLock.RLock()
+	defer pInfo.levelLock.RUnlock()
+
+	var sstReader SSTReader = SSTReader{}
+	if _, ok := pInfo.sstReaderMap[sNum]; ok {
+		sstReader = pInfo.sstReaderMap[offset]
+	} else {
+		return nil, errors.New(fmt.Sprintf("Could not find sstReader for seqNum %d in %d partition",
+			sNum, pInfo.partitionId))
+	}
+	return sstReader.ReadRec(int64(offset))
 }

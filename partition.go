@@ -11,8 +11,8 @@ import (
 var partitionInfoMap = make(map[int]*PartitionInfo)
 
 type PartitionInfo struct {
-	readLock  sync.RWMutex //1. (WLock)Modifying MemTable during write  2. (RLock) Reading MemTable & Index
-	writeLock sync.Mutex   //1. Modifying WAL & MemTable
+	readLock  *sync.RWMutex //1. (WLock)Modifying MemTable during write  2. (RLock) Reading MemTable & Index
+	writeLock *sync.Mutex   //1. Modifying WAL & MemTable
 
 	partitionId int
 	walSeq      uint32
@@ -26,11 +26,11 @@ type PartitionInfo struct {
 	// should have which wal file it's a part of,
 	// flush should happen without blocking others for long time
 
-	levelLock    sync.RWMutex
+	levelLock    *sync.RWMutex
 	levelsInfo   map[int]*LevelInfo //TODO - check lock used while accessing levelsInfo..do we need it? - readlock is in use now..IMP
 	sstReaderMap map[uint32]SSTReader
 
-	compactLock      sync.Mutex
+	compactLock      *sync.Mutex
 	activeCompaction *CompactInfo
 }
 
@@ -57,16 +57,16 @@ func PreparePartitionIdsMap() error {
 		}
 
 		pInfo := &PartitionInfo{
-			readLock:           sync.RWMutex{},
-			writeLock:          sync.Mutex{},
+			readLock:           &sync.RWMutex{},
+			writeLock:          &sync.Mutex{},
 			partitionId:        partitionId,
 			levelsInfo:         newLevelInfo(),
 			index:              sklist.New(),
 			memTable:           memTable,
 			inactiveLogDetails: make([]*InactiveLogDetails, 0, 10), //expecting max of 10 inactive memtable
 			sstReaderMap:       make(map[uint32]SSTReader),
-			levelLock:          sync.RWMutex{},
-			compactLock:        sync.Mutex{},
+			levelLock:          &sync.RWMutex{},
+			compactLock:        &sync.Mutex{},
 		}
 
 		partitionInfoMap[partitionId] = pInfo
@@ -107,12 +107,10 @@ func PreparePartitionIdsMap() error {
 
 func flushPendingMemTables() {
 	for _, pInfo := range partitionInfoMap {
-		pInfo.readLock.Lock()
 		for i := 0; i < len(pInfo.inactiveLogDetails); i++ {
 			fmt.Println("-- -- ", pInfo.inactiveLogDetails[i])
 			publishMemFlushTask(pInfo.inactiveLogDetails[i])
 		}
-		pInfo.readLock.Unlock()
 	}
 }
 
