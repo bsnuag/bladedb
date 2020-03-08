@@ -122,15 +122,8 @@ func (pInfo *PartitionInfo) writeSSTAndIndex(memRecs *sklist.SkipList) (seqNum u
 	}
 	//update index
 	pInfo.index.SetBatch(idxmap)
-	//update sstReader map
-	pInfo.readLock.Lock()
-	pInfo.levelLock.Lock()
-	defer pInfo.levelLock.Unlock()
-	defer pInfo.readLock.Unlock()
 
 	levelNum := 0
-	levelInfo := pInfo.levelsInfo[levelNum]
-
 	sstReader, err := NewSSTReader(flushedFileSeqNum, pInfo.partitionId)
 	if err != nil {
 		fmt.Println(fmt.Sprintf("Failed to update reader map for sstFileSeqNum: %d", flushedFileSeqNum))
@@ -141,8 +134,14 @@ func (pInfo *PartitionInfo) writeSSTAndIndex(memRecs *sklist.SkipList) (seqNum u
 	sstReader.endKey = endKey
 	sstReader.noOfWriteReq = noOfWriteReq
 	sstReader.noOfDelReq = noOfDelReq
-	levelInfo.sstSeqNums[flushedFileSeqNum] = struct{}{}
+
+	//update sstReader map
+	pInfo.levelLock.Lock()
+	defer pInfo.levelLock.Unlock()
+
+	pInfo.levelsInfo[levelNum].sstSeqNums[flushedFileSeqNum] = struct{}{}
 	pInfo.sstReaderMap[flushedFileSeqNum] = sstReader
+
 	return sstWriter.SeqNum
 }
 

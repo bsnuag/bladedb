@@ -29,7 +29,7 @@ type Constants struct {
 	minSSTCompact  int
 	levelMaxSST    map[int]uint32
 	compactWorker  int
-	compactActive  bool
+	compactActive  int32
 	memFlushWorker int
 }
 
@@ -60,6 +60,6 @@ var defaultConstants = Constants{
 		6: 0, //infinite
 	},
 	compactWorker:  8,
-	compactActive:  true,
+	compactActive:  1, //1=true, 0 = false
 	memFlushWorker: 8,
 }

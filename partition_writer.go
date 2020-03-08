@@ -16,6 +16,8 @@ func Remove(key string, ts int64) {
 	}
 
 	pInfo.writeLock.Lock()
+	defer pInfo.writeLock.Unlock()
+
 	inactiveLogDetails, err := pInfo.logWriter.Write(keyByte, nil, ts, defaultConstants.deleteReq)
 
 	if err != nil {
@@ -26,13 +28,10 @@ func Remove(key string, ts int64) {
 		pInfo.handleRolledOverLogDetails(inactiveLogDetails)
 	}
 
-	pInfo.readLock.Lock()
+	//pInfo.readLock.Lock() - skiplist is thread-safe
 	pInfo.memTable.Insert(keyByte, nil, ts, defaultConstants.deleteReq) //We need to put delete rec in mem, since it gets into SST later
 	pInfo.index.Remove(keyHash)
-	pInfo.readLock.Unlock()
-
-	pInfo.writeLock.Unlock()
-
+	//pInfo.readLock.Unlock() - skiplist is thread-safe
 }
 
 func Put(key string, value string, ts int64) {
@@ -48,6 +47,8 @@ func Put(key string, value string, ts int64) {
 
 	//fmt.Println(fmt.Sprintf("Write Req for Key: %s, partId: %d", key, partitionId))
 	pInfo.writeLock.Lock()
+	defer pInfo.writeLock.Unlock()
+
 	inactiveLogDetails, err := pInfo.logWriter.Write(keyByte, valueByte, ts, defaultConstants.writeReq)
 
 	if err != nil {
@@ -58,11 +59,9 @@ func Put(key string, value string, ts int64) {
 		pInfo.handleRolledOverLogDetails(inactiveLogDetails)
 	}
 
-	pInfo.readLock.Lock()
+	//pInfo.readLock.Lock()- skiplist is thread-safe
 	pInfo.memTable.Insert(keyByte, valueByte, ts, defaultConstants.writeReq)
-	pInfo.readLock.Unlock()
-
-	pInfo.writeLock.Unlock()
+	//pInfo.readLock.Unlock()- skiplist is thread-safe
 }
 
 func (pInfo *PartitionInfo) handleRolledOverLogDetails(inactiveLogDetails *InactiveLogDetails) {
