@@ -14,8 +14,6 @@ func Get(key string) []byte {
 	pInfo.readLock.RLock()
 	defer pInfo.readLock.RUnlock()
 
-	//fmt.Println(fmt.Sprintf("read req for key: %s", key))
-
 	memRec, _ := pInfo.memTable.Find(keyByte)
 
 	if memRec != nil {
@@ -51,9 +49,7 @@ func Get(key string) []byte {
 		panic(err)
 		return nil
 	}
-	fmt.Println(fmt.Sprintf("sstRec: %v", stableRec))
-	fmt.Println("---------------------------------------")
-	return nil
+	return stableRec.val
 }
 
 func (pInfo *PartitionInfo) getFromSST(sNum uint32, offset uint32) (*SSTRec, error) {
@@ -62,7 +58,7 @@ func (pInfo *PartitionInfo) getFromSST(sNum uint32, offset uint32) (*SSTRec, err
 
 	var sstReader SSTReader = SSTReader{}
 	if _, ok := pInfo.sstReaderMap[sNum]; ok {
-		sstReader = pInfo.sstReaderMap[offset]
+		sstReader = pInfo.sstReaderMap[sNum]
 	} else {
 		return nil, errors.New(fmt.Sprintf("Could not find sstReader for seqNum %d in %d partition",
 			sNum, pInfo.partitionId))

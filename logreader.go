@@ -16,6 +16,7 @@ type LogReader struct {
 
 func deleteLog(partitionId int, seqNum uint32) error {
 	fileName := LogDir + fmt.Sprintf(LogBaseFileName, seqNum, partitionId)
+	fmt.Println(fmt.Sprintf("delete log file: %s", fileName))
 	return os.Remove(fileName)
 }
 
@@ -51,18 +52,13 @@ func maxLogSeq(partId int) (uint32, error) {
 //log files which were not successfully written to SST
 func (pInfo *PartitionInfo) loadUnclosedLogFile() error {
 	if manifestFile.manifest == nil {
-		fmt.Println("no unclosed wal files")
+		fmt.Println("no unclosed wal files for partition: ", pInfo.partitionId)
 		return nil
 	}
 	unclosedFiles := make(map[uint32]ManifestRec)
 	for _, manifestRec := range manifestFile.manifest.logManifest[pInfo.partitionId].manifestRecs {
 		if manifestRec.fop == defaultConstants.fileDelete {
-			if _, ok := unclosedFiles[manifestRec.seqNum]; !ok {
-				panic("deleted wal file found but not create file in manifest")
-			} else {
-				delete(unclosedFiles, manifestRec.seqNum)
-				deleteLog(manifestRec.partitionId, manifestRec.seqNum) //delete log file in case it's not deleted
-			}
+			deleteLog(manifestRec.partitionId, manifestRec.seqNum) //delete log file in case it's not deleted
 		} else {
 			unclosedFiles[manifestRec.seqNum] = manifestRec
 		}

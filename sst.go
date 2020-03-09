@@ -175,22 +175,19 @@ func GetSSTReader(fileName string, sstFileSeqNum uint32, partitionId int) (SSTRe
 
 //TODO - add try catch mechanism
 func (reader SSTReader) ReadRec(offset int64) (*SSTRec, error) {
-	reader.file.Seek(offset, 0) //TODO - whence- offset from which seek happens, add a check and seek from offset
 	var lenRecBuf = make([]byte, SST_HEADER_LEN)
-	reader.file.Read(lenRecBuf[0:SST_HEADER_LEN])
-	fmt.Println(fmt.Sprintf("reading from offset: %d ", offset))
-	fmt.Println(fmt.Sprintf("read from file: %v", lenRecBuf))
+	reader.file.ReadAt(lenRecBuf[0:SST_HEADER_LEN], offset)
 
 	var sstRecLength = binary.LittleEndian.Uint32(lenRecBuf[:])
-	fmt.Println(fmt.Sprintf("sstRecLength from file: %v", sstRecLength))
+	if sstRecLength == 0 {
+		return nil, nil
+	}
 	var sstRecBuf = make([]byte, sstRecLength)
-	reader.file.Read(sstRecBuf[0:sstRecLength])
+	reader.file.ReadAt(sstRecBuf[0:sstRecLength], offset+int64(SST_HEADER_LEN))
 
 	var sstRec = &SSTRec{}
 	gotiny.Unmarshal(sstRecBuf[:], sstRec)
 
-	fmt.Println(fmt.Sprintf("sstRec from file, key: %v , value: %v , ts: %d",
-		string(sstRec.key), string(sstRec.val), sstRec.meta.ts))
 	return sstRec, nil
 }
 
