@@ -1,8 +1,8 @@
 package memstore
 
 import (
-	"bladedb"
 	"fmt"
+	"github.com/stretchr/testify/assert"
 	"testing"
 	"time"
 )
@@ -11,7 +11,6 @@ func TestNewMemStoreCreate(t *testing.T) {
 	memStore, err := NewMemStore(0)
 	if memStore==nil || err!=nil {
 		panic("Error while creating new memstore")
-		return
 	}
 }
 
@@ -26,16 +25,15 @@ func TestMemStoreInsert(t *testing.T) {
 		key := []byte(fmt.Sprintf("key-%d",i))
 		value := []byte(fmt.Sprintf("value-%d",i))
 		ts := time.Now().Unix()
-		memStore.Insert(key, value, ts, bladedb.WriteReq)
+		memStore.Insert(key, value, ts, 0)
 	}
-	fmt.Println(memStore.size)
+	assert.True(t, memStore.list.Length==N, "Size should be 1000000")
 }
 
 func TestMemStoreFind(t *testing.T) {
 	memStore, err := NewMemStore(0)
 	if memStore==nil || err!=nil {
 		panic("Error while creating new memstore")
-		return
 	}
 	//insert
 	N:=100
@@ -43,16 +41,29 @@ func TestMemStoreFind(t *testing.T) {
 		key := []byte(fmt.Sprintf("key-%d",i))
 		value := []byte(fmt.Sprintf("value-%d",i))
 		ts := time.Now().Unix()
-		memStore.Insert(key, value, ts, bladedb.WriteReq)
+		memStore.Insert(key, value, ts, 0)
 	}
+	findCount:=0
 	for i:=0;i<N;i++{
 		keyString:=fmt.Sprintf("key-%d",i)
 		key := []byte(keyString)
-		value, err :=memStore.Find(key)
+		_, err :=memStore.Find(key)
 		if err == nil {
-			fmt.Println(value)
+			findCount++
+			//fmt.Println(value)
 		} else {
-			fmt.Println(fmt.Sprintf("couldn't find key: %s", keyString))
+			//fmt.Println(fmt.Sprintf("couldn't find key: %s", keyString))
 		}
+	}
+	assert.True(t, memStore.list.Length==findCount, "Size should be 100")
+}
+
+func BenchmarkMemStoreInsert(b *testing.B) {
+	memTable, _ := NewMemStore(0)
+	for i := 0; i < b.N; i++ {
+		key := []byte(fmt.Sprintf("key%d", i))
+		value := []byte(fmt.Sprintf("value-%d", i))
+		ts := time.Now().Unix()
+		memTable.Insert(key, value, ts, 0)
 	}
 }
