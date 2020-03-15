@@ -4,6 +4,8 @@ import (
 	"bladedb/memstore"
 	"bladedb/sklist"
 	"fmt"
+	"github.com/pkg/errors"
+	"golang.org/x/sync/errgroup"
 	"sync"
 	"sync/atomic"
 )
@@ -71,7 +73,7 @@ func PreparePartitionIdsMap() error {
 
 		partitionInfoMap[partitionId] = pInfo
 
-		maxSSTSeq, err := loadPartitionData(partitionId)
+		maxSSTSeq, err := pInfo.loadActiveSSTs()
 		if err != nil {
 			fmt.Println(err)
 			return err
@@ -97,6 +99,27 @@ func PreparePartitionIdsMap() error {
 		pInfo.logWriter = logWriter
 		pInfo.loadUnclosedLogFile()
 	}
+
+	loadDbStateGroup := errgroup.Group{}
+	for partitionId := 0; partitionId < defaultConstants.noOfPartitions; partitionId++ {
+		pInfo := partitionInfoMap[partitionId]
+		loadDbStateGroup.Go(func() error {
+			if err := pInfo.loadUnclosedLogFile(); err != nil {
+				return errors.Wrapf(err, "Error while loading unclosed log files from log-manifest: %v",
+					manifestFile.manifest.logManifest[pInfo.partitionId])
+			}
+			for _, reader := range pInfo.sstReaderMap {
+				if _, err := (&reader).loadSSTRec(pInfo.index); err != nil {
+					return errors.Wrapf(err, "Error while loading index from active ssts : %v", pInfo.sstReaderMap)
+				}
+			}
+			return nil
+		})
+	}
+	if err := loadDbStateGroup.Wait(); err != nil {
+		return errors.Wrap(err, "Error while setting up db")
+	}
+
 	fmt.Println("DB Setup Done")
 
 	activateMemFlushWorkers()
