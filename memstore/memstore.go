@@ -7,11 +7,8 @@ import "bladedb/sklist"
 	MemTable is implemented using hashmap which internally has bucketed lock
 */
 
-//TODO - Could be replaced with skiplist for better performance
 type MemTable struct {
-	list        *sklist.SkipList
-	partitionId int
-	size        int64 //no of elements it holds
+	list *sklist.SkipList
 }
 
 type MemRec struct {
@@ -23,17 +20,10 @@ type MemRec struct {
 
 func NewMemStore(partitionId int) (*MemTable, error) {
 	memTable := &MemTable{
-		list:        sklist.New(),
-		partitionId: partitionId,
+		list: sklist.New(),
 	}
 	return memTable, nil
 }
-
-//TODO - check if we need this
-//func (memTable *MemTable) Remove(key []byte) {
-//	keyString := string(key)
-//	memTable.list.Remove(keyString)
-//}
 
 func (memTable *MemTable) Insert(key []byte, value []byte, ts int64, reqType byte) {
 	keyString := string(key)
@@ -57,7 +47,6 @@ func (memTable *MemTable) FindKeyString(key string) (value *MemRec, err error) {
 func (memTable *MemTable) RefreshMemTable() (*sklist.SkipList) {
 	oldList := memTable.list
 	memTable.list = sklist.New()
-	memTable.size = 0
 	return oldList
 }
 

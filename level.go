@@ -4,7 +4,6 @@ import (
 	"fmt"
 )
 
-//TODO = do we need a lock here ..?
 //this map is always accessed while reading or when mem-table gets flushed
 
 type LevelInfo struct { //SSTReaderMap map[uint32]SSTReader //sst_seq_num - SSTReader
