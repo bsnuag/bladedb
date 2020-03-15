@@ -24,7 +24,7 @@ type LogRecord struct {
 }
 
 type Header struct {
-	recType  byte //write or tomestomb
+	recType  byte //write or tombstone
 	ts       int64
 	checksum int64 //check logic for checksum
 }
