@@ -29,7 +29,7 @@ type PartitionInfo struct {
 	// flush should happen without blocking others for long time
 
 	levelLock    *sync.RWMutex
-	levelsInfo   map[int]*LevelInfo //TODO - check lock used while accessing levelsInfo..do we need it? - readlock is in use now..IMP
+	levelsInfo   map[int]*LevelInfo
 	sstReaderMap map[uint32]SSTReader
 
 	compactLock      *sync.Mutex

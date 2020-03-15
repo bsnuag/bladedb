@@ -14,7 +14,7 @@ var activeMemFlushSubscriber sync.WaitGroup
 //activate mem-flush and compact worker
 func activateMemFlushWorkers() {
 	for i := 1; i <= defaultConstants.memFlushWorker; i++ {
-		go memFlushWorker(fmt.Sprintf("MemFlushWorker- %d", i)) //TODO - must support multiple threads..V.V Imp Next
+		go memFlushWorker(fmt.Sprintf("MemFlushWorker- %d", i))
 	}
 }
 

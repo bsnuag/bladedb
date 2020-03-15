@@ -6,6 +6,7 @@ import (
 	"encoding/binary"
 	"fmt"
 	"github.com/niubaoshu/gotiny"
+	"github.com/pkg/errors"
 	"os"
 )
 
@@ -34,12 +35,6 @@ var SST_HEADER_LEN uint32 = 5
 var SSTDir = "data/dbstore"
 var SSTBaseFileName = "/sst_%d_%d.sst"
 
-//filename format - sst_partitionId_levelNo_sstSeqNum.sst TODO - make changes in all places
-//one file for each partition
-
-/*
-	One SST for each partition hence partition Id
-*/
 type SSTWriter struct {
 	file        *os.File
 	writer      *bufio.Writer
@@ -60,7 +55,7 @@ func (pInfo *PartitionInfo) NewSSTWriter() (*SSTWriter, error) {
 func NewSSTWriter(partitionId int, seqNum uint32) (*SSTWriter, error) {
 
 	fileName := SSTDir + fmt.Sprintf(SSTBaseFileName, partitionId, seqNum)
-	file, err := os.OpenFile(fileName, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	file, err := os.OpenFile(fileName, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0600)
 
 	if err != nil {
 		panic("Error while opening or creating sst file")
@@ -83,16 +78,11 @@ func (writer *SSTWriter) Write(key []byte, value []byte, ts int64, recType byte)
 	var headerBuf = make([]byte, SST_HEADER_LEN)
 
 	totalWriteLen := SST_HEADER_LEN + uint32(len(sstRec))
-	//if data can't be written, flush and create a new file
-	//if (writer.offset + totalWriteLen) > SST_TABLE_MAX_LEN {
-	//	writer.FlushAndClose()
-	//}
 	binary.LittleEndian.PutUint32(headerBuf[0:SST_HEADER_LEN], uint32(len(sstRec)))
 
 	if _, err := writer.writer.Write(headerBuf[:]); err != nil {
 		return 0, err
 	}
-	//TODO - if len(sstRec) > maxSSTRecLen throw error
 	if _, err := writer.writer.Write(sstRec); err != nil {
 		return 0, err
 	}
@@ -127,43 +117,18 @@ type SSTReader struct {
 	endKey       []byte
 	noOfDelReq   uint64
 	noOfWriteReq uint64
-	//TODO - may want to add below props..
-	//time it got created..
 }
 
-type SSTReaderMeta struct {
-	startKey     []byte
-	endKey       []byte
-	noOfDelReq   uint64
-	noOfWriteReq uint64
-	//TODO - may want to add below props..
-	//time it got created..
-}
-
-//TODO - this can be removed - improve code - design pattern + naming convention
 func NewSSTReader(seqNum uint32, partitionId int) (SSTReader, error) {
-
 	fileName := SSTDir + fmt.Sprintf(SSTBaseFileName, partitionId, seqNum)
-	fmt.Println(fmt.Sprintf("FileName for given seqNum: %d and partitionId: %d is %s", seqNum,
-		partitionId, fileName))
+	file, err := os.OpenFile(fileName, os.O_RDONLY, 0400) //TODO - can be moved to fileutils - a common place
 
-	if _, err := os.Stat(fileName); err != nil {
-		panic(fmt.Sprintf("Couldn't open sst file %s", fileName))
-		return SSTReader{}, nil
-	}
-	return GetSSTReader(fileName, seqNum, partitionId)
-}
-
-func GetSSTReader(fileName string, sstFileSeqNum uint32, partitionId int) (SSTReader, error) {
-	file, err := os.OpenFile(fileName, os.O_RDONLY, 0644) //TODO - can be moved to fileutils - a common place
 	if err != nil {
-		panic("Error while opening or creating sst file, fileName: " + fileName)
-		return SSTReader{}, err
+		return SSTReader{}, errors.Wrapf(err, "Error while opening sst file: %s", fileName)
 	}
-
 	sstReader := SSTReader{
 		file:         file,
-		SeqNm:        sstFileSeqNum,
+		SeqNm:        seqNum,
 		partitionId:  partitionId,
 		startKey:     nil,
 		endKey:       nil,
@@ -173,7 +138,6 @@ func GetSSTReader(fileName string, sstFileSeqNum uint32, partitionId int) (SSTRe
 	return sstReader, nil
 }
 
-//TODO - add try catch mechanism
 func (reader SSTReader) ReadRec(offset int64) (*SSTRec, error) {
 	var lenRecBuf = make([]byte, SST_HEADER_LEN)
 	reader.file.ReadAt(lenRecBuf[0:SST_HEADER_LEN], offset)
@@ -190,15 +154,6 @@ func (reader SSTReader) ReadRec(offset int64) (*SSTRec, error) {
 
 	return sstRec, nil
 }
-
-/*func exists(name string) (bool, error) {
-	_, err := os.Stat(name)
-	if os.IsNotExist(err) {
-		return false, nil
-	}
-	return err != nil, err
-}
-*/
 
 //bootstrapping activity
 //index is thread-safe
@@ -242,7 +197,6 @@ func (reader *SSTReader) loadSSTRec(idx *sklist.SkipList) (int64, error) {
 		if reader.startKey == nil {
 			reader.startKey = sstRec.key
 		}
-		//TODO - startkey, endkey, noWrite, noDelete can be moved to SST file if this causes performance issue
 		reader.endKey = sstRec.key
 		readOffset += (SST_HEADER_LEN) + (sstRecLength)
 		recsRead++
@@ -268,11 +222,10 @@ func (reader SSTReader) readNext() (uint32, *SSTRec) {
 }
 
 func (reader SSTReader) Close() error {
-	fmt.Println(fmt.Sprintf("Closing SSTReader sst SeqNum: %d, PartitionId: %d", reader.SeqNm, reader.partitionId))
 	return reader.file.Close()
 }
 
-func deleteSST(partitionId int, seqNum uint32) error { //TODO - if file doesn't exists then error ?
+func deleteSST(partitionId int, seqNum uint32) error {
 	fileName := SSTDir + fmt.Sprintf(SSTBaseFileName, partitionId, seqNum)
 	return os.Remove(fileName)
 }
