@@ -3,25 +3,30 @@ package bladedb
 import (
 	"bladedb/memstore"
 	"fmt"
+	"github.com/pkg/errors"
 )
 
-func Remove(key string, ts int64) {
+func Remove(key string, ts int64) (value []byte, err error) {
 	keyByte := []byte(key)
 	keyHash, _ := GetHash(keyByte)
 	partitionId := GetPartitionId(keyHash)
 	pInfo := partitionInfoMap[partitionId]
 
 	if pInfo == nil {
-		panic(fmt.Sprintf("PartitionInfo doesn't exists for partition: %d, Key: %s ", partitionId, key))
+		return value, errors.New(fmt.Sprintf("partition doesn't exists for partition: %d, Key: %s ", partitionId, key))
+	}
+	value, err = Get(key)
+	if err != nil {
+		return value, err
 	}
 
 	pInfo.writeLock.Lock()
 	defer pInfo.writeLock.Unlock()
 
-	inactiveLogDetails, err := pInfo.logWriter.Write(keyByte, nil, ts, defaultConstants.deleteReq)
+	inactiveLogDetails, err := pInfo.logWriter.Write(keyByte, nil, ts, DefaultConstants.deleteReq)
 
 	if err != nil {
-		panic(err)
+		return value, errors.Wrap(err, "error while writing into db")
 	}
 
 	if inactiveLogDetails != nil && inactiveLogDetails.WriteOffset > 0 {
@@ -29,30 +34,30 @@ func Remove(key string, ts int64) {
 	}
 
 	//pInfo.readLock.Lock() - skiplist is thread-safe
-	pInfo.memTable.Insert(keyByte, nil, ts, defaultConstants.deleteReq) //We need to put delete rec in mem, since it gets into SST later
+	pInfo.memTable.Insert(keyByte, nil, ts, DefaultConstants.deleteReq) //We need to put delete rec in mem, since it gets into SST later
 	pInfo.index.Remove(keyHash)
 	//pInfo.readLock.Unlock() - skiplist is thread-safe
+	return value, nil
 }
 
-func Put(key string, value string, ts int64) {
+func Put(key string, valueByte []byte, ts int64) error {
 	keyByte := []byte(key)
-	valueByte := []byte(value)
 	keyHash, _ := GetHash(keyByte)
 	partitionId := GetPartitionId(keyHash)
 	pInfo := partitionInfoMap[partitionId]
 
 	if pInfo == nil {
-		panic(fmt.Sprintf("PartitionInfo doesn't exists for partition: %d, Key: %s ", partitionId, key))
+		return errors.New(fmt.Sprintf("partition doesn't exists for partition: %d, Key: %s ", partitionId, key))
 	}
 
 	//fmt.Println(fmt.Sprintf("Write Req for Key: %s, partId: %d", key, partitionId))
 	pInfo.writeLock.Lock()
 	defer pInfo.writeLock.Unlock()
 
-	inactiveLogDetails, err := pInfo.logWriter.Write(keyByte, valueByte, ts, defaultConstants.writeReq)
+	inactiveLogDetails, err := pInfo.logWriter.Write(keyByte, valueByte, ts, DefaultConstants.writeReq)
 
 	if err != nil {
-		panic(err)
+		return errors.Wrap(err, "error while writing into db")
 	}
 
 	if inactiveLogDetails != nil && inactiveLogDetails.WriteOffset > 0 {
@@ -60,8 +65,9 @@ func Put(key string, value string, ts int64) {
 	}
 
 	//pInfo.readLock.Lock()- skiplist is thread-safe
-	pInfo.memTable.Insert(keyByte, valueByte, ts, defaultConstants.writeReq)
+	pInfo.memTable.Insert(keyByte, valueByte, ts, DefaultConstants.writeReq)
 	//pInfo.readLock.Unlock()- skiplist is thread-safe
+	return nil
 }
 
 func (pInfo *PartitionInfo) handleRolledOverLogDetails(inactiveLogDetails *InactiveLogDetails) {

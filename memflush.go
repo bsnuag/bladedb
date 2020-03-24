@@ -5,15 +5,17 @@ import (
 	"bladedb/sklist"
 	"fmt"
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
 var memFlushTaskQueue = make(chan *InactiveLogDetails, 100000)
 var activeMemFlushSubscriber sync.WaitGroup
+var memFlushActive int32 = 1
 
 //activate mem-flush and compact worker
 func activateMemFlushWorkers() {
-	for i := 1; i <= defaultConstants.memFlushWorker; i++ {
+	for i := 1; i <= DefaultConstants.memFlushWorker; i++ {
 		go memFlushWorker(fmt.Sprintf("MemFlushWorker- %d", i))
 	}
 }
@@ -40,16 +42,16 @@ func memFlushWorker(flushWorkerName string) {
 		mf1 := ManifestRec{
 			partitionId: memTask.PartitionId,
 			seqNum:      memTask.FileSeqNum,
-			fop:         defaultConstants.fileDelete,
-			fileType:    defaultConstants.logFileType,
+			fop:         DefaultConstants.fileDelete,
+			fileType:    DefaultConstants.logFileType,
 		}
 
 		mf2 := ManifestRec{
 			partitionId: memTask.PartitionId,
 			levelNum:    0,
 			seqNum:      seqNum,
-			fop:         defaultConstants.fileCreate,
-			fileType:    defaultConstants.sstFileType,
+			fop:         DefaultConstants.fileCreate,
+			fileType:    DefaultConstants.sstFileType,
 		}
 		//writeManifest log-delete and sst-create details
 		writeManifest([]ManifestRec{mf1, mf2})
@@ -100,7 +102,7 @@ func (pInfo *PartitionInfo) writeSSTAndIndex(memRecs *sklist.SkipList) (seqNum u
 		}
 
 		//if rec type is writeReq then load to index, delete request need not load to index
-		if value.RecType == defaultConstants.writeReq {
+		if value.RecType == DefaultConstants.writeReq {
 			keyHash, _ := GetHash(value.Key)
 			idxmap[keyHash] = indexRec
 			noOfWriteReq++
@@ -146,11 +148,20 @@ func (pInfo *PartitionInfo) writeSSTAndIndex(memRecs *sklist.SkipList) (seqNum u
 }
 
 func publishMemFlushTask(inactiveLogDetails *InactiveLogDetails) {
-	memFlushTaskQueue <- inactiveLogDetails
+	if isMemFlushActive() {
+		memFlushTaskQueue <- inactiveLogDetails
+	} else {
+		fmt.Println("MemFlush is not active, cannot publish new task")
+	}
+}
+
+func isMemFlushActive() bool {
+	return memFlushActive == 1
 }
 
 func stopMemFlushWorker() {
 	fmt.Println("Request received to stop MemFlush workers", memFlushTaskQueue)
+	atomic.AddInt32(&memFlushActive, -1)
 	close(memFlushTaskQueue)
 	fmt.Println("Waiting for all submitted mem flush tasks to be completed")
 	activeMemFlushSubscriber.Wait()

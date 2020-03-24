@@ -22,15 +22,15 @@ func GetPartitionId(key interface{}) int {
 		fmt.Printf("unexpected type %T", v)
 		panic("Error while getting partitionId")
 	case []byte:
-		return int(murmur3.Sum64(key.([]byte)) % uint64(defaultConstants.noOfPartitions))
+		return int(murmur3.Sum64(key.([]byte)) % uint64(DefaultConstants.noOfPartitions))
 	case string:
-		return int(murmur3.Sum64([]byte(key.(string))) % uint64(defaultConstants.noOfPartitions))
+		return int(murmur3.Sum64([]byte(key.(string))) % uint64(DefaultConstants.noOfPartitions))
 	}
 }
 
 func newLevelInfo() map[int]*LevelInfo {
 	levelsInfo := make(map[int]*LevelInfo)
-	for lNo := 0; lNo <= defaultConstants.maxLevel; lNo++ {
+	for lNo := 0; lNo <= DefaultConstants.maxLevel; lNo++ {
 		levelsInfo[lNo] = &LevelInfo{
 			sstSeqNums: make(map[uint32]struct{}),
 		}

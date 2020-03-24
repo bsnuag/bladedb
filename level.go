@@ -21,10 +21,10 @@ func (pInfo *PartitionInfo) loadActiveSSTs() (uint32, error) {
 		if manifestRec.seqNum > maxSSTSeq {
 			maxSSTSeq = manifestRec.seqNum
 		}
-		if manifestRec.fop == defaultConstants.fileDelete { //file delete req
+		if manifestRec.fop == DefaultConstants.fileDelete { //file delete req
 			delete(pInfo.levelsInfo[manifestRec.levelNum].sstSeqNums, manifestRec.seqNum)
 			deleteSST(pInfo.partitionId, manifestRec.seqNum)
-		} else if manifestRec.fop == defaultConstants.fileCreate {
+		} else if manifestRec.fop == DefaultConstants.fileCreate {
 			pInfo.levelsInfo[manifestRec.levelNum].sstSeqNums[manifestRec.seqNum] = struct{}{}
 		} else {
 			fmt.Println(fmt.Sprintf("invalid manifest file operations: %d, accepts only 0 and 1", manifestRec.fop))

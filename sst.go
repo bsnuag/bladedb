@@ -169,7 +169,7 @@ func (reader *SSTReader) loadSSTRec(idx *sklist.SkipList) (int64, error) {
 	for readOffset < uint32(info.Size()) {
 		sstRecLength, sstRec := reader.readNext()
 
-		if sstRec.meta.recType == defaultConstants.writeReq {
+		if sstRec.meta.recType == DefaultConstants.writeReq {
 			indexRec := &IndexRec{
 				SSTRecOffset:  readOffset,
 				SSTFileSeqNum: reader.SeqNm,

@@ -95,15 +95,15 @@ func (writer *LogWriter) Write(key []byte, value []byte, ts int64, recType byte)
 
 	logRecByte := gotiny.Marshal(&logRec)
 
-	logRecLenBuf := make([]byte, defaultConstants.logRecLen)
+	logRecLenBuf := make([]byte, DefaultConstants.logRecLen)
 
 	binary.LittleEndian.PutUint32(logRecLenBuf[:], uint32(len(logRecByte)))
 
-	totalWriteLen := defaultConstants.logRecLen + uint32(len(logRecByte))
+	totalWriteLen := DefaultConstants.logRecLen + uint32(len(logRecByte))
 
 	var inactiveLogDetails *InactiveLogDetails = nil
 
-	if writer.writeOffset+totalWriteLen >= defaultConstants.logFileMaxLen {
+	if writer.writeOffset+totalWriteLen >= DefaultConstants.logFileMaxLen {
 		logDetails, err := writer.rollover()
 		if err != nil {
 			return inactiveLogDetails, err
@@ -146,8 +146,8 @@ func (writer *LogWriter) rollover() (*InactiveLogDetails, error) {
 	mf1 := ManifestRec{
 		partitionId: pInfo.partitionId,
 		seqNum:      newLogWriter.seqNum,
-		fop:         defaultConstants.fileCreate,
-		fileType:    defaultConstants.logFileType,
+		fop:         DefaultConstants.fileCreate,
+		fileType:    DefaultConstants.logFileType,
 	}
 	writeManifest([]ManifestRec{mf1})
 	return inactiveLogDetails, nil

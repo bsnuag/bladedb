@@ -31,9 +31,12 @@ type Constants struct {
 	compactWorker  int
 	compactActive  int32
 	memFlushWorker int
+
+	//network
+	ClientListenPort int
 }
 
-var defaultConstants = Constants{
+var DefaultConstants = Constants{
 	writeReq:            0,
 	deleteReq:           1,
 	logStatRecLen:       4,
@@ -46,7 +49,7 @@ var defaultConstants = Constants{
 	logFileStartOffset:  0,
 	walFlushPeriodInSec: 10,
 	maxLevel:            6,
-	noOfPartitions:      8,
+	noOfPartitions:      100,
 	maxSSTSize:          64e+6, //64 MB
 	maxSSTCompact:       32,    //soft value
 	minSSTCompact:       16,    //TODO - can we make it % based ..? 10 % of total SST ??
@@ -62,4 +65,6 @@ var defaultConstants = Constants{
 	compactWorker:  8,
 	compactActive:  1, //1=true, 0 = false
 	memFlushWorker: 8,
+
+	ClientListenPort: 9099,
 }

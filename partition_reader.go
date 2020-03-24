@@ -1,11 +1,11 @@
 package bladedb
 
 import (
-	"errors"
 	"fmt"
+	"github.com/pkg/errors"
 )
 
-func Get(key string) []byte {
+func Get(key string) ([]byte, error) {
 	keyByte := []byte(key)
 	keyHash, _ := GetHash(keyByte)
 	partitionId := GetPartitionId(keyHash)
@@ -17,10 +17,10 @@ func Get(key string) []byte {
 	memRec, _ := pInfo.memTable.Find(keyByte)
 
 	if memRec != nil {
-		if memRec.RecType == defaultConstants.deleteReq { //if delete request
-			return nil
+		if memRec.RecType == DefaultConstants.deleteReq { //if delete request
+			return nil, nil
 		}
-		return memRec.Value
+		return memRec.Value, nil
 	}
 
 	//Loop inactive memtable in reverse(later one is most updated one), if rec found return
@@ -28,10 +28,10 @@ func Get(key string) []byte {
 	for i := range pInfo.inactiveLogDetails {
 		inactiveLog := pInfo.inactiveLogDetails[last-i]
 		if memRec, err := inactiveLog.MemTable.Find(keyByte); err != nil && memRec != nil {
-			if memRec.RecType == defaultConstants.deleteReq {
-				return nil
+			if memRec.RecType == DefaultConstants.deleteReq {
+				return nil, nil
 			}
-			return memRec.Value
+			return memRec.Value, nil
 		}
 	}
 	var indexRec *IndexRec = nil
@@ -39,17 +39,15 @@ func Get(key string) []byte {
 		indexRec = (indexVal.Value()).(*IndexRec)
 	}
 	if indexRec == nil {
-		return nil
+		return nil, nil
 	}
 
 	stableRec, err := pInfo.getFromSST(indexRec.SSTFileSeqNum, indexRec.SSTRecOffset)
 
 	if err != nil {
-		fmt.Println(fmt.Sprintf("error while reading sst record for indexRec: %v", indexRec))
-		panic(err)
-		return nil
+		return nil, errors.Wrapf(err, "error while reading sst record for indexRec: %v", indexRec)
 	}
-	return stableRec.val
+	return stableRec.val, nil
 }
 
 func (pInfo *PartitionInfo) getFromSST(sNum uint32, offset uint32) (*SSTRec, error) {
