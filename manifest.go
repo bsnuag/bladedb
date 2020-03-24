@@ -93,7 +93,7 @@ func replay() error {
 		sstManifest: make(map[int]ManifestRecs),
 		logManifest: make(map[int]ManifestRecs),
 	}
-	for partitionId := 0; partitionId < defaultConstants.noOfPartitions; partitionId++ {
+	for partitionId := 0; partitionId < DefaultConstants.noOfPartitions; partitionId++ {
 		manifest.sstManifest[partitionId] = ManifestRecs{
 			manifestRecs: make(map[uint32]ManifestRec),
 		}

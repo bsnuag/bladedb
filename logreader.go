@@ -57,7 +57,7 @@ func (pInfo *PartitionInfo) loadUnclosedLogFile() error {
 	}
 	unclosedFiles := make(map[uint32]ManifestRec)
 	for _, manifestRec := range manifestFile.manifest.logManifest[pInfo.partitionId].manifestRecs {
-		if manifestRec.fop == defaultConstants.fileDelete {
+		if manifestRec.fop == DefaultConstants.fileDelete {
 			deleteLog(manifestRec.partitionId, manifestRec.seqNum) //delete log file in case it's not deleted
 		} else {
 			unclosedFiles[manifestRec.seqNum] = manifestRec
@@ -89,7 +89,7 @@ func (pInfo *PartitionInfo) loadLogFile(unClosedFileSeq uint32) (*InactiveLogDet
 	var recoveredBytes uint32 = 0
 
 	for {
-		var headerBuf = make([]byte, defaultConstants.logRecLen)
+		var headerBuf = make([]byte, DefaultConstants.logRecLen)
 		_, err := reader.fileReader.Read(headerBuf[:])
 
 		if err != nil {
@@ -110,7 +110,7 @@ func (pInfo *PartitionInfo) loadLogFile(unClosedFileSeq uint32) (*InactiveLogDet
 		pInfo.memTable.Insert(walRec.Key(), walRec.Value(), walRec.header.ts, walRec.header.recType)
 
 		recsRecovered++
-		recoveredBytes += defaultConstants.logRecLen + recLength
+		recoveredBytes += DefaultConstants.logRecLen + recLength
 	}
 
 	if recoveredBytes == 0 {

@@ -99,7 +99,7 @@ func (compactInfo *CompactInfo) sortInputSST() {
 
 var compactTaskQueue = make(chan *CompactInfo, 10000) //TODO - change channel type to compactTask with pId and thisLevel
 var compactSubscriber sync.WaitGroup
-var compactActive = defaultConstants.compactActive //replace with atomic operation
+var compactActive = DefaultConstants.compactActive //replace with atomic operation
 
 //publish new task to compact queue if compaction is active(compactActive==true)
 func publishCompactTask(compactTask *CompactInfo) {
@@ -128,7 +128,7 @@ func stopCompactWorker() {
 }
 
 func activateCompactWorkers() {
-	for i := 1; i <= defaultConstants.compactWorker; i++ {
+	for i := 1; i <= DefaultConstants.compactWorker; i++ {
 		go compactWorker(fmt.Sprintf("CompactWorker- %d", i))
 	}
 }
@@ -200,7 +200,7 @@ func (pInfo *PartitionInfo) checkAndCompleteCompaction(level int) {
 	pInfo.activeCompaction = nil //complete compaction
 	pInfo.compactLock.Unlock()
 
-	if level != defaultConstants.maxLevel && len(pInfo.levelsInfo[level].sstSeqNums) > int(defaultConstants.levelMaxSST[level]) {
+	if level != DefaultConstants.maxLevel && len(pInfo.levelsInfo[level].sstSeqNums) > int(DefaultConstants.levelMaxSST[level]) {
 		publishCompactTask(&CompactInfo{
 			partitionId: pInfo.partitionId,
 			thisLevel:   level,
@@ -231,7 +231,7 @@ func (compactInfo *CompactInfo) compact() {
 	totalCompactIndexWrite := 0
 	for compactInfo.heap.Len() > 0 {
 		rec := compactInfo.nextRec()
-		if compactInfo.nextLevel == defaultConstants.maxLevel && rec.meta.recType == defaultConstants.deleteReq {
+		if compactInfo.nextLevel == DefaultConstants.maxLevel && rec.meta.recType == DefaultConstants.deleteReq {
 			fmt.Println(fmt.Sprintf("Tombstone rec: %v, with target level=maxlevel, removing it from adding it "+
 				"to compacted sst", rec))
 			continue
@@ -249,16 +249,16 @@ func (compactInfo *CompactInfo) compact() {
 		}
 		bytesWritten += uint32(n)
 
-		if rec.meta.recType == defaultConstants.deleteReq {
+		if rec.meta.recType == DefaultConstants.deleteReq {
 			sstWriter.noOfDelReq++
-		} else if rec.meta.recType == defaultConstants.writeReq {
+		} else if rec.meta.recType == DefaultConstants.writeReq {
 			sstWriter.noOfWriteReq++
 		}
 		if sstWriter.startKey == nil {
 			sstWriter.startKey = rec.key
 		}
 		sstWriter.endKey = rec.key
-		if bytesWritten >= defaultConstants.maxSSTSize {
+		if bytesWritten >= DefaultConstants.maxSSTSize {
 			seqNum, err := sstWriter.FlushAndClose()
 			if err != nil {
 				panic(err)
@@ -317,8 +317,8 @@ func (pInfo *PartitionInfo) updatePartition() { //TODO - test cases
 			partitionId: pInfo.partitionId,
 			seqNum:      newReader.SeqNm,
 			levelNum:    compactInfo.nextLevel,
-			fop:         defaultConstants.fileCreate,
-			fileType:    defaultConstants.sstFileType,
+			fop:         DefaultConstants.fileCreate,
+			fileType:    DefaultConstants.sstFileType,
 		}
 		manifestRecs = append(manifestRecs, mf1)
 		pInfo.sstReaderMap[newReader.SeqNm] = newReader
@@ -359,8 +359,8 @@ func (pInfo *PartitionInfo) updatePartition() { //TODO - test cases
 			partitionId: pInfo.partitionId,
 			seqNum:      reader.SeqNm,
 			levelNum:    compactInfo.thisLevel,
-			fop:         defaultConstants.fileDelete,
-			fileType:    defaultConstants.sstFileType,
+			fop:         DefaultConstants.fileDelete,
+			fileType:    DefaultConstants.sstFileType,
 		}
 		deleteReaders = append(deleteReaders, reader)
 		manifestRecs = append(manifestRecs, mf1)
@@ -375,8 +375,8 @@ func (pInfo *PartitionInfo) updatePartition() { //TODO - test cases
 			partitionId: pInfo.partitionId,
 			seqNum:      reader.SeqNm,
 			levelNum:    compactInfo.nextLevel,
-			fop:         defaultConstants.fileDelete,
-			fileType:    defaultConstants.sstFileType,
+			fop:         DefaultConstants.fileDelete,
+			fileType:    DefaultConstants.sstFileType,
 		}
 		deleteReaders = append(deleteReaders, reader)
 		manifestRecs = append(manifestRecs, mf1)
@@ -470,13 +470,13 @@ func (compactInfo *CompactInfo) fillLevels() (string, string) {
 				thisLevelSKey = sKey
 				thisLevelEKey = eKey
 			} else {
-				if len(overlappedSST) > defaultConstants.maxSSTCompact {
+				if len(overlappedSST) > DefaultConstants.maxSSTCompact {
 					continue
 				}
 				tmp_sKey, tmp_eKey := keyRange(sKey, eKey, thisLevelSKey, thisLevelEKey)
 				//fmt.Println("tmp_sKey, tmp_eKey :", tmp_sKey, tmp_eKey)
 				overlappedSST := pInfo.overlappedSSTReaders(nextLevelSSTSeqNums, tmp_sKey, tmp_eKey)
-				if len(overlappedSST) > 0 && len(overlappedSST) <= defaultConstants.maxSSTCompact {
+				if len(overlappedSST) > 0 && len(overlappedSST) <= DefaultConstants.maxSSTCompact {
 					//fmt.Println(sstReader)
 					compactInfo.botLevelSST = append(compactInfo.botLevelSST, sstReader)
 					fillOverlappedMap(nextLevelOverlappedSSTMap, overlappedSST)
@@ -521,7 +521,7 @@ func (compactInfo *CompactInfo) fillTopLevels() (string, string) {
 	pInfo.levelLock.RLock()
 	defer pInfo.levelLock.RUnlock()
 
-	levelMax := defaultConstants.levelMaxSST[compactInfo.thisLevel]
+	levelMax := DefaultConstants.levelMaxSST[compactInfo.thisLevel]
 	thisLevelSSTSeqNums := pInfo.levelsInfo[compactInfo.thisLevel].sstSeqNums
 	nextLevelSSTSeqNums := pInfo.levelsInfo[compactInfo.nextLevel].sstSeqNums
 	thisLevelSortedSeqNums := pInfo.sortedSeqNums(thisLevelSSTSeqNums)
@@ -632,8 +632,8 @@ func (compactInfo *CompactInfo) updateLevel() {
 			partitionId: pInfo.partitionId,
 			levelNum:    compactInfo.nextLevel,
 			seqNum:      reader.SeqNm,
-			fop:         defaultConstants.fileCreate,
-			fileType:    defaultConstants.sstFileType,
+			fop:         DefaultConstants.fileCreate,
+			fileType:    DefaultConstants.sstFileType,
 		}
 		writeManifest([]ManifestRec{mf1})
 	}

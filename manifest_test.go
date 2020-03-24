@@ -97,7 +97,7 @@ func getManifestRecs() []ManifestRec {
 		partitionId: 0,
 		seqNum:      1,
 		levelNum:    1,
-		fop:         defaultConstants.fileCreate,
+		fop:         DefaultConstants.fileCreate,
 		fileType:    0,
 	}
 
@@ -105,7 +105,7 @@ func getManifestRecs() []ManifestRec {
 		partitionId: 0,
 		seqNum:      2,
 		levelNum:    2,
-		fop:         defaultConstants.fileDelete,
+		fop:         DefaultConstants.fileDelete,
 		fileType:    1,
 	}
 

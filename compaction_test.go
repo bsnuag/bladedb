@@ -180,7 +180,7 @@ func TestFillLevels_level1WithNoLevel2Data(t *testing.T) {
 func TestFillLevels_level1WithOverlap(t *testing.T) {
 	partId := 0
 	level := 1
-	defaultConstants.levelMaxSST[level] = 2
+	DefaultConstants.levelMaxSST[level] = 2
 	levelsInfo := newLevelInfo()
 	pInfo := &PartitionInfo{
 		partitionId:  partId,
@@ -231,7 +231,7 @@ func TestFillLevels_level1WithOverlap(t *testing.T) {
 func TestFillLevels_level1WithOverlapButNoLevel2Data(t *testing.T) {
 	partId := 0
 	level := 1
-	defaultConstants.levelMaxSST[level] = 1
+	DefaultConstants.levelMaxSST[level] = 1
 	levelsInfo := newLevelInfo()
 	pInfo := &PartitionInfo{
 		partitionId:  partId,
@@ -443,7 +443,7 @@ func prepareInputSSTs(dir string, partitionId int) (SSTReader, SSTReader) {
 		time.Sleep(time.Nanosecond * 10)
 		key := fmt.Sprintf("%dKey_", i)
 		value := fmt.Sprintf("%dValue_", i)
-		memTable.Insert([]byte(key), []byte(value), time.Now().UnixNano(), defaultConstants.writeReq)
+		memTable.Insert([]byte(key), []byte(value), time.Now().UnixNano(), DefaultConstants.writeReq)
 	}
 	//fmt.Println("SST-1 Data..")
 	iterator := memTable.Recs().NewIterator()
@@ -469,7 +469,7 @@ func prepareInputSSTs(dir string, partitionId int) (SSTReader, SSTReader) {
 		time.Sleep(time.Nanosecond * 10)
 		key := fmt.Sprintf("%dKey_", i)
 		value := fmt.Sprintf("%dValue_", i)
-		memTable.Insert([]byte(key), []byte(value), time.Now().UnixNano(), defaultConstants.deleteReq)
+		memTable.Insert([]byte(key), []byte(value), time.Now().UnixNano(), DefaultConstants.deleteReq)
 	}
 	//fmt.Println("\n\nSST-2 Data..")
 	iterator = memTable.Recs().NewIterator()

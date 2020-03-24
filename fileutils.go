@@ -4,6 +4,6 @@ import (
 	"os"
 )
 
-func createDirectory(path string) error {
+func CreateDirectory(path string) error {
 	return os.MkdirAll(path, os.ModePerm)
 }
