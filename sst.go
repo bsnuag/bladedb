@@ -157,6 +157,7 @@ func (reader SSTReader) ReadRec(offset int64) (*SSTRec, error) {
 
 //bootstrapping activity
 //index is thread-safe
+//this is invoked sequentially
 func (reader *SSTReader) loadSSTRec(idx *sklist.SkipList) (int64, error) {
 	var recsRead int64 = 0
 	var readOffset uint32 = 0
@@ -192,6 +193,15 @@ func (reader *SSTReader) loadSSTRec(idx *sklist.SkipList) (int64, error) {
 			reader.noOfWriteReq++
 		} else {
 			reader.noOfDelReq++
+			keyHash, _ := GetHash(sstRec.key)
+			indexVal := idx.Get(keyHash)
+			//remove if delete timestamp is > any write timestamp
+			if indexVal != nil {
+				idRec := indexVal.Value().(*IndexRec)
+				if idRec.TS < sstRec.meta.ts {
+					idx.Remove(keyHash)
+				}
+			}
 		}
 
 		if reader.startKey == nil {
