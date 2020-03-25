@@ -660,3 +660,5 @@ func (pInfo *PartitionInfo) level0PossibleCompaction() {
 		})
 	}
 }
+
+//TODO - if a level(l) has delete request and no write req present in level > l then remove while compaction

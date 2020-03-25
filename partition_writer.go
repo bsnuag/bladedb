@@ -40,7 +40,7 @@ func Remove(key string, ts int64) (value []byte, err error) {
 	return value, nil
 }
 
-func Put(key string, valueByte []byte, ts int64) error {
+func Put(key string, valueByte []byte, ts int64) error { //TODO - ts should be created after acquiring lock
 	keyByte := []byte(key)
 	keyHash, _ := GetHash(keyByte)
 	partitionId := GetPartitionId(keyHash)
