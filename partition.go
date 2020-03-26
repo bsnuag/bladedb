@@ -1,8 +1,8 @@
 package bladedb
 
 import (
+	"bladedb/index"
 	"bladedb/memstore"
-	"bladedb/sklist"
 	"fmt"
 	"github.com/pkg/errors"
 	"golang.org/x/sync/errgroup"
@@ -22,7 +22,7 @@ type PartitionInfo struct {
 
 	logWriter *LogWriter
 
-	index              *sklist.SkipList //key(hash) - sstMetadata
+	index              *index.SkipList //key(hash) - sstMetadata
 	memTable           *memstore.MemTable
 	inactiveLogDetails []*InactiveLogDetails //
 	// should have which wal file it's a part of,
@@ -52,23 +52,9 @@ func PreparePartitionIdsMap() error {
 
 	for partitionId := 0; partitionId < DefaultConstants.noOfPartitions; partitionId++ {
 
-		memTable, err := memstore.NewMemStore(partitionId)
+		pInfo, err := NewPartition(partitionId)
 		if err != nil {
-			fmt.Println(err)
-			return err
-		}
-
-		pInfo := &PartitionInfo{
-			readLock:           &sync.RWMutex{},
-			writeLock:          &sync.Mutex{},
-			partitionId:        partitionId,
-			levelsInfo:         newLevelInfo(),
-			index:              sklist.New(),
-			memTable:           memTable,
-			inactiveLogDetails: make([]*InactiveLogDetails, 0, 10), //expecting max of 10 inactive memtable
-			sstReaderMap:       make(map[uint32]SSTReader),
-			levelLock:          &sync.RWMutex{},
-			compactLock:        &sync.Mutex{},
+			errors.Wrapf(err, "Error while creating new partition: %d", partitionId)
 		}
 
 		partitionInfoMap[partitionId] = pInfo
@@ -128,6 +114,26 @@ func PreparePartitionIdsMap() error {
 	return nil
 }
 
+func NewPartition(partitionId int) (*PartitionInfo, error) {
+	memTable, err := memstore.NewMemStore(partitionId)
+	if err != nil {
+		return nil, err
+	}
+	return &PartitionInfo{
+		readLock:           &sync.RWMutex{},
+		writeLock:          &sync.Mutex{},
+		partitionId:        partitionId,
+		levelsInfo:         newLevelInfo(),
+		index:              index.NewIndex(),
+		memTable:           memTable,
+		inactiveLogDetails: make([]*InactiveLogDetails, 0, 10), //expecting max of 10 inactive memtable
+		sstReaderMap:       make(map[uint32]SSTReader),
+		levelLock:          &sync.RWMutex{},
+		compactLock:        &sync.Mutex{},
+		sstSeq:             0,
+		walSeq:             0,
+	}, nil
+}
 func flushPendingMemTables() {
 	for _, pInfo := range partitionInfoMap {
 		for i := 0; i < len(pInfo.inactiveLogDetails); i++ {
