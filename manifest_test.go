@@ -113,7 +113,8 @@ func getManifestRecs() []ManifestRec {
 }
 
 func TestInitManifest(t *testing.T) {
-	ManifestFileName = "data/test_manifest"
+	tempFile, _ := ioutil.TempFile("", "manifest_init_test_file")
+	ManifestFileName = tempFile.Name()
 	if err := initManifest(); err != nil {
 		panic(err)
 	}

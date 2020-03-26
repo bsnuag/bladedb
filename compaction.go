@@ -1,7 +1,7 @@
 package bladedb
 
 import (
-	"bladedb/sklist"
+	"bladedb/index"
 	"container/heap"
 	"fmt"
 	"os"
@@ -81,7 +81,7 @@ type CompactInfo struct {
 	botLevelSST   []SSTReader
 	topLevelSST   []SSTReader
 	newSSTReaders []SSTReader
-	idx           *sklist.SkipList
+	idx           *index.SkipList
 	heap          heapArr
 }
 
@@ -236,7 +236,7 @@ func (compactInfo *CompactInfo) compact() {
 				"to compacted sst", rec))
 			continue
 		}
-		indexRec := &IndexRec{
+		indexRec := index.IndexRec{
 			SSTRecOffset:  sstWriter.Offset,
 			SSTFileSeqNum: sstWriter.SeqNum,
 			TS:            rec.meta.ts,
@@ -331,13 +331,13 @@ func (pInfo *PartitionInfo) updatePartition() { //TODO - test cases
 	for iterator.Next() {
 		next := iterator.Value()
 		tmpKeyHash := next.Key()
-		tmpIndexRec := next.Value().(*IndexRec)
+		tmpIndexRec := next.Value()
 
 		indexVal := pInfo.index.Get(tmpKeyHash)
 		if indexVal == nil {
 			pInfo.index.Set(tmpKeyHash, tmpIndexRec)
 		} else {
-			idxRec := indexVal.Value().(*IndexRec)
+			idxRec := indexVal.Value()
 			if idxRec.TS > tmpIndexRec.TS { //if there is a latest write
 				continue
 			}
@@ -647,7 +647,7 @@ func initCompactInfo(level int, partId int) *CompactInfo {
 		botLevelSST:   make([]SSTReader, 0, 8),
 		topLevelSST:   make([]SSTReader, 0, 8),
 		newSSTReaders: make([]SSTReader, 0, 100),
-		idx:           sklist.New(),
+		idx:           index.NewIndex(),
 		heap:          make([]*HeapEle, 0, 10000),
 	}
 }

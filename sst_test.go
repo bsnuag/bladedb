@@ -1,7 +1,7 @@
 package bladedb
 
 import (
-	"bladedb/sklist"
+	"bladedb/index"
 	"fmt"
 	"github.com/stretchr/testify/require"
 	"grpc/utils"
@@ -12,7 +12,7 @@ import (
 	"testing"
 )
 
-func TestReadRec(t *testing.T) {
+func TestSSTReadRec(t *testing.T) {
 	partitionId := 0
 	dir, err := ioutil.TempDir("", "sstLoadTest")
 	if err != nil {
@@ -42,7 +42,7 @@ func TestLoadSSTRec_Mix_Delele_And_Write(t *testing.T) {
 	}
 	// update SSTDir to temp directory
 	SSTDir = dir
-	index := sklist.New()
+	index := index.NewIndex()
 
 	sReader1, sReader2 := prepareInputSSTs(dir, partitionId)
 	//sReader1 writeReq - 0Key_ to 19Key_
@@ -84,7 +84,7 @@ func TestLoadSSTRec_Only_Write(t *testing.T) {
 	}
 	// update SSTDir to temp directory
 	SSTDir = dir
-	index := sklist.New()
+	index := index.NewIndex()
 
 	sReader1, sReader2 := prepareInputSSTs(dir, partitionId)
 	//sReader1 writeReq - 0Key_ to 19Key_
@@ -116,7 +116,7 @@ func TestLoadSSTRec_Only_Delete(t *testing.T) {
 	}
 	// update SSTDir to temp directory
 	SSTDir = dir
-	index := sklist.New()
+	index := index.NewIndex()
 
 	sReader1, sReader2 := prepareInputSSTs(dir, partitionId)
 	//sReader1 deleteReq - 10Key_ to 24Key_

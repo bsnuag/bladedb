@@ -1,7 +1,7 @@
 package bladedb
 
 import (
-	"bladedb/sklist"
+	"bladedb/index"
 	"bufio"
 	"encoding/binary"
 	"fmt"
@@ -9,12 +9,6 @@ import (
 	"github.com/pkg/errors"
 	"os"
 )
-
-type IndexRec struct {
-	SSTRecOffset  uint32 //considering max sst file size 160MB = 1.6e+8 Bytes
-	SSTFileSeqNum uint32 //sst files will have a seq num
-	TS            int64  //TS - helpful for TTL
-}
 
 type SSTRec struct {
 	key  []byte
@@ -158,7 +152,7 @@ func (reader SSTReader) ReadRec(offset int64) (*SSTRec, error) {
 //bootstrapping activity
 //index is thread-safe
 //this is invoked sequentially
-func (reader *SSTReader) loadSSTRec(idx *sklist.SkipList) (int64, error) {
+func (reader *SSTReader) loadSSTRec(idx *index.SkipList) (int64, error) {
 	var recsRead int64 = 0
 	var readOffset uint32 = 0
 	info, err := reader.file.Stat()
@@ -171,7 +165,7 @@ func (reader *SSTReader) loadSSTRec(idx *sklist.SkipList) (int64, error) {
 		sstRecLength, sstRec := reader.readNext()
 
 		if sstRec.meta.recType == DefaultConstants.writeReq {
-			indexRec := &IndexRec{
+			indexRec := index.IndexRec{
 				SSTRecOffset:  readOffset,
 				SSTFileSeqNum: reader.SeqNm,
 				TS:            sstRec.meta.ts,
@@ -184,9 +178,9 @@ func (reader *SSTReader) loadSSTRec(idx *sklist.SkipList) (int64, error) {
 			if indexVal == nil {
 				idx.Set(keyHash, indexRec)
 			} else {
-				idRec := indexVal.Value().(*IndexRec)
+				idRec := indexVal.Value()
 				if idRec.TS < sstRec.meta.ts {
-					idx.Set(keyHash, indexVal)
+					idx.Set(keyHash, idRec)
 				}
 			}
 
@@ -197,7 +191,7 @@ func (reader *SSTReader) loadSSTRec(idx *sklist.SkipList) (int64, error) {
 			indexVal := idx.Get(keyHash)
 			//remove if delete timestamp is > any write timestamp
 			if indexVal != nil {
-				idRec := indexVal.Value().(*IndexRec)
+				idRec := indexVal.Value()
 				if idRec.TS < sstRec.meta.ts {
 					idx.Remove(keyHash)
 				}

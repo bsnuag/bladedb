@@ -2,7 +2,6 @@ package bladedb
 
 import (
 	"bladedb/memstore"
-	"bladedb/sklist"
 	"bufio"
 	"fmt"
 	"github.com/stretchr/testify/require"
@@ -33,19 +32,14 @@ func TestKeyRange(t *testing.T) {
 
 func TestFillLevels_level0WithOverlap(t *testing.T) {
 	partId := 0
-	levelsInfo := newLevelInfo()
-	pInfo := &PartitionInfo{
-		partitionId:  partId,
-		levelsInfo:   levelsInfo,
-		sstReaderMap: make(map[uint32]SSTReader),
-	}
+	pInfo, _ := NewPartition(partId)
 
-	lInfo0 := levelsInfo[0]
+	lInfo0 := pInfo.levelsInfo[0]
 	lInfo0.sstSeqNums[123] = struct{}{}
 	lInfo0.sstSeqNums[124] = struct{}{}
 	lInfo0.sstSeqNums[125] = struct{}{}
 
-	lInfo1 := levelsInfo[1]
+	lInfo1 := pInfo.levelsInfo[1]
 	lInfo1.sstSeqNums[234] = struct{}{}
 
 	pInfo.sstReaderMap[123] = tempSSTReader("200", "250", 123, 0, 12)
@@ -84,16 +78,12 @@ func TestFillLevels_level0WithOverlap(t *testing.T) {
 
 func TestFillLevels_level0WithNoLevel1Data(t *testing.T) {
 	partId := 0
-	levelsInfo := newLevelInfo()
-	pInfo := &PartitionInfo{
-		partitionId:  partId,
-		levelsInfo:   levelsInfo,
-		sstReaderMap: make(map[uint32]SSTReader),
-	}
-	lInfo0 := levelsInfo[0]
-	lInfo0.sstSeqNums[123] = struct{}{}
-	lInfo0.sstSeqNums[124] = struct{}{}
-	lInfo0.sstSeqNums[125] = struct{}{}
+
+	pInfo, _ := NewPartition(partId)
+
+	pInfo.levelsInfo[0].sstSeqNums[123] = struct{}{}
+	pInfo.levelsInfo[0].sstSeqNums[124] = struct{}{}
+	pInfo.levelsInfo[0].sstSeqNums[125] = struct{}{}
 
 	pInfo.sstReaderMap[123] = tempSSTReader("200", "250", 123, 0, 12)
 	pInfo.sstReaderMap[124] = tempSSTReader("270", "300", 124, 0, 14)
@@ -132,17 +122,12 @@ func TestFillLevels_level0WithNoLevel1Data(t *testing.T) {
 
 func TestFillLevels_level1WithNoLevel2Data(t *testing.T) {
 	partId := 0
-	levelsInfo := newLevelInfo()
-	pInfo := &PartitionInfo{
-		partitionId:  partId,
-		levelsInfo:   levelsInfo,
-		sstReaderMap: make(map[uint32]SSTReader),
-	}
+	pInfo, _ := NewPartition(partId)
 
-	lInfo1 := levelsInfo[1] //Level 1 have only 3 sst which is lower than levelMaxSST[1] - this should be taken care when compactionInfo is being pushed to compactQueue
-	lInfo1.sstSeqNums[123] = struct{}{}
-	lInfo1.sstSeqNums[124] = struct{}{}
-	lInfo1.sstSeqNums[125] = struct{}{}
+	//Level 1 have only 3 sst which is lower than levelMaxSST[1] - this should be taken care when compactionInfo is being pushed to compactQueue
+	pInfo.levelsInfo[1].sstSeqNums[123] = struct{}{}
+	pInfo.levelsInfo[1].sstSeqNums[124] = struct{}{}
+	pInfo.levelsInfo[1].sstSeqNums[125] = struct{}{}
 
 	pInfo.sstReaderMap[123] = tempSSTReader("200", "250", 123, 7, 12)
 	pInfo.sstReaderMap[124] = tempSSTReader("270", "300", 124, 0, 14)
@@ -181,23 +166,17 @@ func TestFillLevels_level1WithOverlap(t *testing.T) {
 	partId := 0
 	level := 1
 	DefaultConstants.levelMaxSST[level] = 2
-	levelsInfo := newLevelInfo()
-	pInfo := &PartitionInfo{
-		partitionId:  partId,
-		levelsInfo:   levelsInfo,
-		sstReaderMap: make(map[uint32]SSTReader),
-	}
-	lInfo0 := levelsInfo[level]
-	lInfo0.sstSeqNums[123] = struct{}{}
-	lInfo0.sstSeqNums[124] = struct{}{}
-	lInfo0.sstSeqNums[125] = struct{}{}
+	pInfo, _ := NewPartition(partId)
+
+	pInfo.levelsInfo[1].sstSeqNums[123] = struct{}{}
+	pInfo.levelsInfo[1].sstSeqNums[124] = struct{}{}
+	pInfo.levelsInfo[1].sstSeqNums[125] = struct{}{}
 
 	pInfo.sstReaderMap[123] = tempSSTReader("200", "250", 123, 0, 12)
 	pInfo.sstReaderMap[124] = tempSSTReader("270", "300", 124, 0, 14)
 	pInfo.sstReaderMap[125] = tempSSTReader("998", "999", 125, 0, 101)
 
-	lInfo1 := levelsInfo[level+1]
-	lInfo1.sstSeqNums[234] = struct{}{}
+	pInfo.levelsInfo[2].sstSeqNums[234] = struct{}{}
 	pInfo.sstReaderMap[234] = tempSSTReader("222", "666", 234, 0, 100)
 
 	partitionInfoMap[partId] = pInfo
@@ -232,24 +211,17 @@ func TestFillLevels_level1WithOverlapButNoLevel2Data(t *testing.T) {
 	partId := 0
 	level := 1
 	DefaultConstants.levelMaxSST[level] = 1
-	levelsInfo := newLevelInfo()
-	pInfo := &PartitionInfo{
-		partitionId:  partId,
-		levelsInfo:   levelsInfo,
-		sstReaderMap: make(map[uint32]SSTReader),
-	}
+	pInfo, _ := NewPartition(partId)
 
-	info_0 := levelsInfo[level]
-	info_0.sstSeqNums[123] = struct{}{}
-	info_0.sstSeqNums[124] = struct{}{}
-	info_0.sstSeqNums[125] = struct{}{}
+	pInfo.levelsInfo[1].sstSeqNums[123] = struct{}{}
+	pInfo.levelsInfo[1].sstSeqNums[124] = struct{}{}
+	pInfo.levelsInfo[1].sstSeqNums[125] = struct{}{}
 
 	pInfo.sstReaderMap[123] = tempSSTReader("200", "250", 123, 0, 12)
 	pInfo.sstReaderMap[124] = tempSSTReader("270", "300", 124, 0, 14)
 	pInfo.sstReaderMap[125] = tempSSTReader("998", "999", 125, 0, 101)
 
-	lInfo1 := levelsInfo[level+1]
-	lInfo1.sstSeqNums[234] = struct{}{}
+	pInfo.levelsInfo[2].sstSeqNums[234] = struct{}{}
 	pInfo.sstReaderMap[234] = tempSSTReader("000", "199", 234, 0, 100)
 
 	partitionInfoMap[partId] = pInfo
@@ -279,6 +251,7 @@ func TestFillLevels_level1WithOverlapButNoLevel2Data(t *testing.T) {
 	require.Equal(t, 0, len(compactInfo.topLevelSST), "0 sst should be picked up from top level")
 	require.Equal(t, 0, compactInfo.heap.Len(), "heap length should be zero")
 }
+
 func tempSSTReader(sKey string, eKey string, seqNum uint32, delReq uint64, writeReq uint64) SSTReader {
 	return SSTReader{
 		file:         nil,
@@ -332,14 +305,10 @@ func TestBuildCompactionBaseLevelAs1(t *testing.T) {
 	}
 	// update SSTDir to temp directory
 	SSTDir = dir
-	partitionInfoMap[partitionId] = &PartitionInfo{
-		partitionId:  partitionId,
-		levelsInfo:   newLevelInfo(),
-		index:        sklist.New(),
-		sstReaderMap: make(map[uint32]SSTReader),
-		sstSeq:       100,
-		walSeq:       0,
-	}
+	partitionInfoMap[partitionId], _ = NewPartition(partitionId)
+	partitionInfoMap[partitionId].sstSeq = 100
+	partitionInfoMap[partitionId].walSeq = 0
+
 	compactInfo := initCompactInfo(1, partitionId)
 	sReader1, sReader2 := prepareInputSSTs(dir, partitionId)
 
@@ -381,13 +350,10 @@ func TestBuildCompactionBaseLevelAs0(t *testing.T) {
 		log.Fatal(err)
 	}
 	SSTDir = dir
-	partitionInfoMap[partitionId] = &PartitionInfo{
-		partitionId:  partitionId,
-		index:        sklist.New(),
-		sstReaderMap: make(map[uint32]SSTReader),
-		sstSeq: 100,
-		walSeq: 0,
-	}
+	partitionInfoMap[partitionId], _ = NewPartition(partitionId)
+	partitionInfoMap[partitionId].sstSeq = 100
+	partitionInfoMap[partitionId].walSeq = 0
+
 	compactInfo := initCompactInfo(0, partitionId)
 	sReader1, sReader2 := prepareInputSSTs(dir, partitionId)
 	compactInfo.botLevelSST = append(compactInfo.botLevelSST, sReader1, sReader2)

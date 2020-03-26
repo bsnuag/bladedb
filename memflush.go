@@ -1,6 +1,7 @@
 package bladedb
 
 import (
+	"bladedb/index"
 	"bladedb/memstore"
 	"bladedb/sklist"
 	"fmt"
@@ -9,12 +10,15 @@ import (
 	"time"
 )
 
-var memFlushTaskQueue = make(chan *InactiveLogDetails, 100000)
+var memFlushTaskQueue chan *InactiveLogDetails = nil
 var activeMemFlushSubscriber sync.WaitGroup
-var memFlushActive int32 = 1
+var memFlushActive int32 = 0
 
 //activate mem-flush and compact worker
 func activateMemFlushWorkers() {
+	memFlushTaskQueue = make(chan *InactiveLogDetails, 100000)
+	memFlushActive = 1
+
 	for i := 1; i <= DefaultConstants.memFlushWorker; i++ {
 		go memFlushWorker(fmt.Sprintf("MemFlushWorker- %d", i))
 	}
@@ -85,13 +89,13 @@ func (pInfo *PartitionInfo) writeSSTAndIndex(memRecs *sklist.SkipList) (seqNum u
 	if err != nil {
 		panic(err)
 	}
-	idxmap := make(map[string]interface{})
+	idxmap := make(map[string]index.IndexRec)
 	//flush memRecs to SST and index
 	iterator := memRecs.NewIterator()
 	for iterator.Next() {
 		next := iterator.Value()
 		value := next.Value().(*memstore.MemRec)
-		indexRec := &IndexRec{
+		indexRec := index.IndexRec{
 			SSTRecOffset:  sstWriter.Offset,
 			SSTFileSeqNum: sstWriter.SeqNum,
 			TS:            value.TS,

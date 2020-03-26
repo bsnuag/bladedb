@@ -34,20 +34,17 @@ func Get(key string) ([]byte, error) {
 			return memRec.Value, nil
 		}
 	}
-	var indexRec *IndexRec = nil
+
 	if indexVal := pInfo.index.Get(keyHash); indexVal != nil {
-		indexRec = (indexVal.Value()).(*IndexRec)
-	}
-	if indexRec == nil {
-		return nil, nil
-	}
+		indexRec := indexVal.Value()
+		stableRec, err := pInfo.getFromSST(indexRec.SSTFileSeqNum, indexRec.SSTRecOffset)
 
-	stableRec, err := pInfo.getFromSST(indexRec.SSTFileSeqNum, indexRec.SSTRecOffset)
-
-	if err != nil {
-		return nil, errors.Wrapf(err, "error while reading sst record for indexRec: %v", indexRec)
+		if err != nil {
+			return nil, errors.Wrapf(err, "error while reading sst record for indexRec: %v", indexRec)
+		}
+		return stableRec.val, nil
 	}
-	return stableRec.val, nil
+	return nil, nil
 }
 
 func (pInfo *PartitionInfo) getFromSST(sNum uint32, offset uint32) (*SSTRec, error) {
