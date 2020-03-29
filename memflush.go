@@ -16,8 +16,10 @@ var memFlushActive int32 = 0
 
 //activate mem-flush and compact worker
 func activateMemFlushWorkers() {
-	memFlushTaskQueue = make(chan *InactiveLogDetails, 100000)
-	memFlushActive = 1
+	if DefaultConstants.memFlushWorker != 0 {
+		memFlushTaskQueue = make(chan *InactiveLogDetails, 100000)
+		memFlushActive = 1
+	}
 
 	for i := 1; i <= DefaultConstants.memFlushWorker; i++ {
 		go memFlushWorker(fmt.Sprintf("MemFlushWorker- %d", i))
@@ -160,10 +162,13 @@ func publishMemFlushTask(inactiveLogDetails *InactiveLogDetails) {
 }
 
 func isMemFlushActive() bool {
-	return memFlushActive == 1
+	return memFlushActive == 1 //TODO - will there be race around it since read is not atomic?
 }
 
 func stopMemFlushWorker() {
+	if DefaultConstants.memFlushWorker == 0 {
+		return
+	}
 	fmt.Println("Request received to stop MemFlush workers", memFlushTaskQueue)
 	atomic.AddInt32(&memFlushActive, -1)
 	close(memFlushTaskQueue)

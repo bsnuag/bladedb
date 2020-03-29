@@ -240,34 +240,3 @@ func (pInfo *PartitionInfo) flushPartition(wg *sync.WaitGroup) {
 	wg.Done()
 }
 
-func PrintPartitionStats() {
-	fmt.Println("------------------------------------X Printing DB Stats X------------------------------------")
-
-	for partId, pInfo := range partitionInfoMap {
-		fmt.Println(fmt.Sprintf("\n\n--------------- Stats for PartitionId: %d ---------------", partId))
-		fmt.Println(fmt.Sprintf("PartitionId: %d", partId))
-		fmt.Println(fmt.Sprintf("No of Keys in Index: %d", pInfo.index.Length))
-		fmt.Println(fmt.Sprintf("No of Keys in active Mem: %d", pInfo.memTable.Size()))
-		var inactiveMemSize int64 = 0
-		for _, inactiveLogDetail := range pInfo.inactiveLogDetails {
-			inactiveMemSize += inactiveLogDetail.MemTable.Size()
-		}
-		fmt.Println(fmt.Sprintf("No of Keys in inactive Mem: %d", inactiveMemSize))
-		for l, lInfo := range pInfo.levelsInfo {
-			fmt.Println(fmt.Sprintf("In Level: %d, Number of SSTable: %d", l, len(lInfo.sstSeqNums)))
-			fmt.Println(fmt.Sprintf("In Level: %d, SSTable SeqNums: %v", l, lInfo.sstSeqNums))
-		}
-		var totalWrite uint64 = 0
-		var totalDelete uint64 = 0
-		for num, reader := range pInfo.sstReaderMap {
-			fmt.Println(fmt.Sprintf("SST SeqNum: %d, Total Write: %d, Total Delete: %d", num,
-				reader.noOfWriteReq, reader.noOfDelReq))
-			totalWrite += reader.noOfWriteReq
-			totalDelete += reader.noOfDelReq
-		}
-		fmt.Println(fmt.Sprintf("PartId: %d, Total Write: %d, Total Delete: %d", partId,
-			totalWrite, totalDelete))
-		fmt.Println()
-		fmt.Println()
-	}
-}

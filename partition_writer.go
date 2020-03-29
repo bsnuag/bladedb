@@ -16,19 +16,19 @@ func Remove(key string) (value []byte, err error) {
 	if pInfo == nil {
 		return value, errors.New(fmt.Sprintf("partition doesn't exists for partition: %d, Key: %s ", partitionId, key))
 	}
-	value, err = Get(key)
-	if err != nil {
-		return value, err
-	}
 
 	pInfo.writeLock.Lock()
 	defer pInfo.writeLock.Unlock()
 
+	value, err = Get(key)
+	if err != nil {
+		return value, errors.Wrapf(err, "error while deleting key: %s", key)
+	}
 	ts := time.Now().UnixNano()
 	inactiveLogDetails, err := pInfo.logWriter.Write(keyByte, nil, ts, DefaultConstants.deleteReq)
 
 	if err != nil {
-		return value, errors.Wrap(err, "error while writing into db")
+		return value, errors.Wrapf(err, "error while deleting key: %s", key)
 	}
 
 	if inactiveLogDetails != nil && inactiveLogDetails.WriteOffset > 0 {

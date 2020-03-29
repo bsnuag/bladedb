@@ -84,6 +84,14 @@ func newLogWriter(partitionId int, seqNum uint32) (*LogWriter, error) {
 		partitionId: partitionId,
 		seqNum:      seqNum,
 	}
+
+	mf1 := ManifestRec{
+		partitionId: partitionId,
+		seqNum:      seqNum,
+		fop:         DefaultConstants.fileCreate,
+		fileType:    DefaultConstants.logFileType,
+	}
+	writeManifest([]ManifestRec{mf1})
 	return logWriter, nil
 }
 
@@ -143,13 +151,6 @@ func (writer *LogWriter) rollover() (*InactiveLogDetails, error) {
 	writer.seqNum = newLogWriter.seqNum
 	writer.writeOffset = 0
 
-	mf1 := ManifestRec{
-		partitionId: pInfo.partitionId,
-		seqNum:      newLogWriter.seqNum,
-		fop:         DefaultConstants.fileCreate,
-		fileType:    DefaultConstants.logFileType,
-	}
-	writeManifest([]ManifestRec{mf1})
 	return inactiveLogDetails, nil
 }
 
