@@ -9,7 +9,6 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	"net"
-	"time"
 )
 
 type BladeDBServer struct {
@@ -36,7 +35,7 @@ func (*BladeDBServer) Get(ctx context.Context, request *proto.GetRequest) (*prot
 }
 
 func (*BladeDBServer) Set(ctx context.Context, request *proto.SetRequest) (*proto.SetResponse, error) {
-	err := bladedb.Put(request.Key, request.Value, time.Now().Unix())
+	err := bladedb.Put(request.Key, request.Value)
 
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, "error while writing key: %v, value: %v, error: %v",
@@ -50,7 +49,7 @@ func (*BladeDBServer) Set(ctx context.Context, request *proto.SetRequest) (*prot
 }
 
 func (*BladeDBServer) Del(ctx context.Context, request *proto.DelRequest) (*proto.DelResponse, error) {
-	value, err := bladedb.Remove(request.Key, time.Now().Unix())
+	value, err := bladedb.Remove(request.Key)
 
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, "error while deleting key: %v error: %v", request.Key, err)
