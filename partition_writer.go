@@ -4,9 +4,10 @@ import (
 	"bladedb/memstore"
 	"fmt"
 	"github.com/pkg/errors"
+	"time"
 )
 
-func Remove(key string, ts int64) (value []byte, err error) {
+func Remove(key string) (value []byte, err error) {
 	keyByte := []byte(key)
 	keyHash, _ := GetHash(keyByte)
 	partitionId := GetPartitionId(keyHash)
@@ -23,6 +24,7 @@ func Remove(key string, ts int64) (value []byte, err error) {
 	pInfo.writeLock.Lock()
 	defer pInfo.writeLock.Unlock()
 
+	ts := time.Now().UnixNano()
 	inactiveLogDetails, err := pInfo.logWriter.Write(keyByte, nil, ts, DefaultConstants.deleteReq)
 
 	if err != nil {
@@ -40,7 +42,7 @@ func Remove(key string, ts int64) (value []byte, err error) {
 	return value, nil
 }
 
-func Put(key string, valueByte []byte, ts int64) error { //TODO - ts should be created after acquiring lock
+func Put(key string, valueByte []byte) error { //TODO - ts should be created after acquiring lock
 	keyByte := []byte(key)
 	keyHash, _ := GetHash(keyByte)
 	partitionId := GetPartitionId(keyHash)
@@ -54,6 +56,7 @@ func Put(key string, valueByte []byte, ts int64) error { //TODO - ts should be c
 	pInfo.writeLock.Lock()
 	defer pInfo.writeLock.Unlock()
 
+	ts := time.Now().UnixNano()
 	inactiveLogDetails, err := pInfo.logWriter.Write(keyByte, valueByte, ts, DefaultConstants.writeReq)
 
 	if err != nil {
