@@ -24,10 +24,14 @@ func Get(key string) ([]byte, error) {
 	}
 
 	//Loop inactive memtable in reverse(later one is most updated one), if rec found return
-	last := len(pInfo.inactiveLogDetails)
-	for i := range pInfo.inactiveLogDetails {
-		inactiveLog := pInfo.inactiveLogDetails[last-i]
-		if memRec, err := inactiveLog.MemTable.Find(keyByte); err != nil && memRec != nil {
+	i := len(pInfo.inactiveLogDetails) - 1
+	for ; i >= 0; i-- {
+		inactiveLog := pInfo.inactiveLogDetails[i]
+		memRec, err := inactiveLog.MemTable.Find(keyByte)
+		if err != nil {
+			return nil, errors.Wrapf(err, "Error while reading data from inactive memtables for key: %s", key)
+		}
+		if memRec != nil {
 			if memRec.RecType == DefaultConstants.deleteReq {
 				return nil, nil
 			}
