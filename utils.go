@@ -4,6 +4,7 @@ import (
 	"crypto/sha256"
 	"fmt"
 	"github.com/spaolacci/murmur3"
+	"time"
 )
 
 func GetHash(input []byte) (string, error) {
@@ -36,4 +37,8 @@ func newLevelInfo() map[int]*LevelInfo {
 		}
 	}
 	return levelsInfo
+}
+
+func NanoTime() uint64 {
+	return uint64(time.Now().UnixNano()) / 1000
 }

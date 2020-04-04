@@ -167,7 +167,7 @@ func TestMemFlushWriteSSTAndIndex_SSTMeta(t *testing.T) {
 	require.True(t, string(partitionInfoMap[partitionId].sstReaderMap[seqNum].endKey) == "9Key_")
 }
 
-func (pInfo *PartitionInfo) prepareMemFlushInput(start int, end int, reqType byte, ts int64) InactiveLogDetails {
+func (pInfo *PartitionInfo) prepareMemFlushInput(start int, end int, reqType byte, ts uint64) InactiveLogDetails {
 	//Write data into mem and then flush it to sst
 	memTable, _ := memstore.NewMemStore(pInfo.partitionId)
 

@@ -4,8 +4,7 @@ import (
 	"bufio"
 	"encoding/binary"
 	"fmt"
-	"github.com/niubaoshu/gotiny"
-	"io"
+	"io/ioutil"
 	"os"
 )
 
@@ -20,7 +19,7 @@ func deleteLog(partitionId int, seqNum uint32) error {
 	return os.Remove(fileName)
 }
 
-func newLogReader(partitionId int, seqNum uint32) (*LogReader, error) {
+/*func newLogReader(partitionId int, seqNum uint32) (*LogReader, error) {
 	fileName := LogDir + fmt.Sprintf(LogBaseFileName, seqNum, partitionId)
 	file, err := os.OpenFile(fileName, os.O_RDONLY, 0644)
 
@@ -32,7 +31,7 @@ func newLogReader(partitionId int, seqNum uint32) (*LogReader, error) {
 		file:       file,
 		fileReader: bufio.NewReader(file),
 	}, nil
-}
+}*/
 
 func maxLogSeq(partId int) (uint32, error) {
 	maxLogSeq := uint32(0)
@@ -79,48 +78,60 @@ func (pInfo *PartitionInfo) loadUnclosedLogFile() error {
 }
 
 func (pInfo *PartitionInfo) loadLogFile(unClosedFileSeq uint32) (*InactiveLogDetails, error) {
-	reader, err := newLogReader(pInfo.partitionId, unClosedFileSeq)
+	logFile := LogDir + fmt.Sprintf(LogBaseFileName, unClosedFileSeq, pInfo.partitionId)
+	logBytes, err := ioutil.ReadFile(logFile)
 	if err != nil {
 		panic(err)
 		return nil, err
 	}
 
 	var recsRecovered = 0
-	var recoveredBytes uint32 = 0
+	var offset uint32 = 0
+
+	inactiveLogDetails := &InactiveLogDetails{
+		FileName:    logFile,
+		WriteOffset: offset,
+		PartitionId: pInfo.partitionId,
+	}
 
 	for {
-		var headerBuf = make([]byte, DefaultConstants.logRecLen)
-		_, err := reader.fileReader.Read(headerBuf[:])
-
-		if err != nil {
-			if err == io.EOF {
-				break
-			} else {
-				return nil, err
-			}
+		if offset == uint32(len(logBytes)) {
+			break
 		}
 
-		var recLength = binary.LittleEndian.Uint32(headerBuf[:])
-		var recBuf = make([]byte, recLength)
-		reader.fileReader.Read(recBuf[:])
-
-		var walRec = LogRecord{}
-		gotiny.Unmarshal(recBuf[:], &walRec)
-
-		pInfo.memTable.Insert(walRec.Key(), walRec.Value(), walRec.header.ts, walRec.header.recType)
-
+		decodedLogRec := Decode(&offset, logBytes)
+		pInfo.memTable.Insert(decodedLogRec.Key(), decodedLogRec.Value(), decodedLogRec.ts, decodedLogRec.recType)
 		recsRecovered++
-		recoveredBytes += DefaultConstants.logRecLen + recLength
+	}
+	inactiveLogDetails.WriteOffset = offset
+	if offset == 0 {
+		fmt.Printf("recovered 0 bytes from %s unclosed wal file, marking it for delete", logFile)
+		return inactiveLogDetails, nil
 	}
 
-	if recoveredBytes == 0 {
-		fmt.Printf("recovered 0 bytes from %s unclosed wal file, marking it for delete", reader.file.Name())
-		return nil, nil
-	}
+	return inactiveLogDetails, nil
+}
 
-	return &InactiveLogDetails{
-		FileName:    reader.file.Name(),
-		WriteOffset: recoveredBytes,
-		PartitionId: pInfo.partitionId,
-	}, nil
+type Decoder interface {
+	Decode(recHeader []byte, recBuf []byte) LogRecord
+}
+
+func Decode(offset *uint32, logBuf []byte) (logRec LogRecord) {
+	keyLen := binary.LittleEndian.Uint16(logBuf[*offset : *offset+2])
+	*offset += 2
+	valueLen := binary.LittleEndian.Uint16(logBuf[*offset : *offset+2])
+	*offset += 2
+	tsLen := binary.LittleEndian.Uint16(logBuf[*offset : *offset+2])
+	*offset += 2
+	logRec.recType = logBuf[*offset]
+	*offset += 1
+	logRec.key = logBuf[*offset : *offset+uint32(keyLen)]
+
+	*offset += uint32(keyLen)
+	logRec.value = logBuf[*offset : *offset+uint32(valueLen)]
+
+	*offset += uint32(valueLen)
+	logRec.ts, _ = binary.Uvarint(logBuf[*offset : *offset+uint32(tsLen)])
+	*offset += uint32(tsLen)
+	return logRec
 }

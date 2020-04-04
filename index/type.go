@@ -45,5 +45,5 @@ type SkipList struct {
 type IndexRec struct {
 	SSTRecOffset  uint32 //considering max sst file size 160MB = 1.6e+8 Bytes
 	SSTFileSeqNum uint32 //sst files will have a seq num
-	TS            int64  //TS - helpful for TTL
+	TS            uint64  //TS - helpful for TTL
 }

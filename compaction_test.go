@@ -409,7 +409,7 @@ func prepareInputSSTs(dir string, partitionId int) (SSTReader, SSTReader) {
 		time.Sleep(time.Nanosecond * 10)
 		key := fmt.Sprintf("%dKey_", i)
 		value := fmt.Sprintf("%dValue_", i)
-		memTable.Insert([]byte(key), []byte(value), time.Now().UnixNano(), DefaultConstants.writeReq)
+		memTable.Insert([]byte(key), []byte(value), NanoTime(), DefaultConstants.writeReq)
 	}
 	//fmt.Println("SST-1 Data..")
 	iterator := memTable.Recs().NewIterator()
@@ -435,7 +435,7 @@ func prepareInputSSTs(dir string, partitionId int) (SSTReader, SSTReader) {
 		time.Sleep(time.Nanosecond * 10)
 		key := fmt.Sprintf("%dKey_", i)
 		value := fmt.Sprintf("%dValue_", i)
-		memTable.Insert([]byte(key), []byte(value), time.Now().UnixNano(), DefaultConstants.deleteReq)
+		memTable.Insert([]byte(key), []byte(value), NanoTime(), DefaultConstants.deleteReq)
 	}
 	//fmt.Println("\n\nSST-2 Data..")
 	iterator = memTable.Recs().NewIterator()

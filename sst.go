@@ -18,7 +18,7 @@ type SSTRec struct {
 
 type SSTRecMeta struct {
 	recType  byte //write or tombstone
-	ts       int64
+	ts       uint64
 	checksum int64 //TODO - impl checksum
 }
 
@@ -65,7 +65,7 @@ func NewSSTWriter(partitionId int, seqNum uint32) (*SSTWriter, error) {
 	return sstWriter, nil
 }
 
-func (writer *SSTWriter) Write(key []byte, value []byte, ts int64, recType byte) (byteWritten int16, err error) {
+func (writer *SSTWriter) Write(key []byte, value []byte, ts uint64, recType byte) (byteWritten int16, err error) {
 	sstMeta := SSTRecMeta{recType, ts, 0}
 
 	sstRec := gotiny.Marshal(&SSTRec{key, value, sstMeta})
