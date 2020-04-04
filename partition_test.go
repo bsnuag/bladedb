@@ -28,7 +28,7 @@ func setupTest() (tearTest func()) {
 	SSTDir = sstdir
 	LogDir = logdir
 	ManifestFileName = manifestfile.Name()
-	DefaultConstants.compactActive = 0
+	DefaultConstants.compactWorker = 0
 	DefaultConstants.memFlushWorker = 0
 	DefaultConstants.noOfPartitions = 3
 
@@ -241,7 +241,6 @@ func TestPartition_Delete_Write_Read_CountVerify_Flush_With0FlushWorker(t *testi
 		}
 	}
 }
-
 
 func totalKeys(partitionStats []PartitionStat) int64 {
 	var len int64 = 0

@@ -6,8 +6,6 @@ import (
 	"fmt"
 	"os"
 	"sort"
-	"sync"
-	"sync/atomic"
 	"time"
 )
 
@@ -95,42 +93,6 @@ func (compactInfo *CompactInfo) sortInputSST() {
 	sort.Slice(compactInfo.botLevelSST, func(i, j int) bool {
 		return string(compactInfo.botLevelSST[i].startKey) <= string(compactInfo.botLevelSST[i].startKey)
 	})
-}
-
-var compactTaskQueue = make(chan *CompactInfo, 10000) //TODO - change channel type to compactTask with pId and thisLevel
-var compactSubscriber sync.WaitGroup
-var compactActive = DefaultConstants.compactActive //replace with atomic operation
-
-//publish new task to compact queue if compaction is active(compactActive==true)
-func publishCompactTask(compactTask *CompactInfo) {
-	if isCompactionActive() {
-		compactTaskQueue <- compactTask
-	} else {
-		fmt.Println("Compaction is not active, cannot publish new task")
-	}
-}
-
-func isCompactionActive() bool {
-	return compactActive == 1
-}
-
-//blocks from accepting new compact tasks, but waits to complete already submitted tasks
-func stopCompactWorker() {
-	s := time.Now()
-	fmt.Println("Request received to stop compact workers")
-	atomic.AddInt32(&compactActive, -1)
-	close(compactTaskQueue)
-	fmt.Println("No new compaction task would be taken, already published tasks will be completed")
-
-	fmt.Println("Waiting for all submitted compaction tasks to be completed")
-	compactSubscriber.Wait()
-	fmt.Println("all submitted compaction tasks completed, time taken(Sec): ", time.Since(s).Seconds())
-}
-
-func activateCompactWorkers() {
-	for i := 1; i <= DefaultConstants.compactWorker; i++ {
-		go compactWorker(fmt.Sprintf("CompactWorker- %d", i))
-	}
 }
 
 //notification should be pushed only when

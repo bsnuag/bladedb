@@ -479,3 +479,24 @@ func prepareInputSSTs(dir string, partitionId int) (SSTReader, SSTReader) {
 	}
 	return sReader1, sReader2
 }
+
+func TestStopCompactWorker(t *testing.T) {
+	DefaultConstants.compactWorker = 0
+	stopCompactWorker()
+	require.True(t, compactActive == 0)
+	require.False(t, isCompactionActive())
+	require.Nil(t, compactTaskQueue)
+
+}
+
+func TestStopCompactWorker_WithPanic(t *testing.T) {
+	defer func() {
+		if r := recover(); r == nil {
+			t.Errorf("The code did not panic")
+		}
+	}()
+	DefaultConstants.compactWorker = 1
+	stopCompactWorker()
+	require.True(t, compactActive == 0)
+	require.Nil(t, compactTaskQueue)
+}
