@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bladedb"
 	"bladedb/index"
 	"bladedb/prototest"
 	"fmt"
@@ -30,7 +31,7 @@ func indexTest() {
 		indexRec := index.IndexRec{
 			SSTRecOffset:  uint32(i),
 			SSTFileSeqNum: uint32(i),
-			TS:            time.Now().UnixNano(),
+			TS:            bladedb.NanoTime(),
 		}
 		idx.Set(fmt.Sprintf("%d", i), indexRec)
 	}

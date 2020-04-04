@@ -37,7 +37,7 @@ func main() {
 	//bladedb.Drain()
 
 	bladedb.Flush()
-	bladedb.MemFlushQueueWG.Wait()
+	//bladedb.MemFlushQueueWG.Wait()
 	bladedb.PrintPartitionStats()
 	fmt.Println("TotalTime After Flusing (ns): ", (time.Now().UnixNano() - start))
 
@@ -85,8 +85,7 @@ func doWrite(tempChan chan *Temp) {
 }
 
 func write(key string, value string) {
-	ts := time.Now().Unix()
-	bladedb.Put(key, value, ts)
+	bladedb.Put(key, []byte(value))
 }
 
 func deleteRecs(nDelete int, wg *sync.WaitGroup) {
@@ -108,8 +107,7 @@ func deleteRecs(nDelete int, wg *sync.WaitGroup) {
 
 func doDelete(tempChan chan *Temp) {
 	for temp := range tempChan {
-		ts := time.Now().Unix()
-		bladedb.Remove(temp.key, ts)
+		bladedb.Remove(temp.key)
 		temp.wg.Done()
 	}
 }
@@ -133,7 +131,7 @@ func readRecs(nRead int, wg *sync.WaitGroup) {
 
 func doRead(tempChan chan *Temp) {
 	for temp := range tempChan {
-		value := bladedb.Get(temp.key)
+		value,_ := bladedb.Get(temp.key)
 		fmt.Printf("Read Key: %s, Value: %s \n", temp.key, string(value))
 		//if value == nil {
 		//} else if value != nil {

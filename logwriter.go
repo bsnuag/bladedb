@@ -7,7 +7,6 @@ import (
 	"bufio"
 	"encoding/binary"
 	"fmt"
-	"github.com/niubaoshu/gotiny"
 	"os"
 )
 
@@ -18,15 +17,10 @@ var LogBaseFileName = "/log_%d_%d.log"
 	LogRecord - record to be inserted into log-commit files
 */
 type LogRecord struct {
-	key    []byte
-	value  []byte
-	header Header
-}
-
-type Header struct {
-	recType  byte //write or tombstone
-	ts       int64
-	checksum int64 //check logic for checksum
+	recType byte //write or tombstone
+	key     []byte
+	value   []byte
+	ts      uint64
 }
 
 func (record LogRecord) KeyString() string {
@@ -45,8 +39,8 @@ func (record LogRecord) Value() []byte {
 	return record.value
 }
 
-func (record LogRecord) Ts() (int64) {
-	return record.header.ts
+func (record LogRecord) Ts() (uint64) {
+	return record.ts
 }
 
 /*
@@ -95,23 +89,41 @@ func newLogWriter(partitionId int, seqNum uint32) (*LogWriter, error) {
 	return logWriter, nil
 }
 
+type LogEncoder interface {
+	Encode() ([]byte, []byte)
+}
+
+//6 byte logrec fields length, rest bytes data
+func (logRec LogRecord) Encode() []byte {
+	keyLen := len(logRec.key)
+	valLen := len(logRec.value)
+
+	var logRecBuf = make([]byte, DefaultConstants.logRecHeaderLen+1+keyLen+valLen+8)
+	binary.LittleEndian.PutUint16(logRecBuf[0:2], uint16(keyLen))
+	binary.LittleEndian.PutUint16(logRecBuf[2:4], uint16(valLen))
+	binary.LittleEndian.PutUint16(logRecBuf[4:6], uint16(8))
+
+	offset := 6
+	logRecBuf[offset] = logRec.recType
+	offset += 1
+	copy(logRecBuf[offset:], logRec.key)
+	offset += len(logRec.key)
+	copy(logRecBuf[offset:], logRec.value)
+	offset += len(logRec.value)
+	binary.PutUvarint(logRecBuf[offset:], logRec.Ts())
+	return logRecBuf
+}
+
 //writes data to wal file
 //checks if size is more than LogFileMaxLen. closed it and returns a summary rec
-func (writer *LogWriter) Write(key []byte, value []byte, ts int64, recType byte) (*InactiveLogDetails, error) {
-	logHeader := Header{recType, ts, 0}
-	logRec := LogRecord{key, value, logHeader}
+func (writer *LogWriter) Write(key []byte, value []byte, ts uint64, recType byte) (*InactiveLogDetails, error) {
 
-	logRecByte := gotiny.Marshal(&logRec)
-
-	logRecLenBuf := make([]byte, DefaultConstants.logRecLen)
-
-	binary.LittleEndian.PutUint32(logRecLenBuf[:], uint32(len(logRecByte)))
-
-	totalWriteLen := DefaultConstants.logRecLen + uint32(len(logRecByte))
+	logRec := LogRecord{recType, key, value, ts}
+	logRecEncoded := logRec.Encode()
 
 	var inactiveLogDetails *InactiveLogDetails = nil
 
-	if writer.writeOffset+totalWriteLen >= DefaultConstants.logFileMaxLen {
+	if writer.writeOffset+uint32(len(logRecEncoded)) >= DefaultConstants.logFileMaxLen {
 		logDetails, err := writer.rollover()
 		if err != nil {
 			return inactiveLogDetails, err
@@ -119,14 +131,10 @@ func (writer *LogWriter) Write(key []byte, value []byte, ts int64, recType byte)
 		inactiveLogDetails = logDetails
 	}
 
-	if _, err := writer.fileWriter.Write(logRecLenBuf[:]); err != nil {
+	if _, err := writer.fileWriter.Write(logRecEncoded[:]); err != nil {
 		return inactiveLogDetails, err
 	}
-
-	if _, err := writer.fileWriter.Write(logRecByte); err != nil {
-		return inactiveLogDetails, err
-	}
-	writer.writeOffset += totalWriteLen
+	writer.writeOffset += uint32(len(logRecEncoded))
 
 	return inactiveLogDetails, nil
 }

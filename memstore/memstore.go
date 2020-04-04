@@ -14,7 +14,7 @@ type MemTable struct {
 type MemRec struct {
 	Key     []byte
 	Value   []byte
-	TS      int64
+	TS      uint64
 	RecType byte
 }
 
@@ -25,7 +25,7 @@ func NewMemStore(partitionId int) (*MemTable, error) {
 	return memTable, nil
 }
 
-func (memTable *MemTable) Insert(key []byte, value []byte, ts int64, reqType byte) {
+func (memTable *MemTable) Insert(key []byte, value []byte, ts uint64, reqType byte) {
 	keyString := string(key)
 
 	memTable.list.Set(keyString, &MemRec{key, value, ts, reqType})

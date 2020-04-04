@@ -4,7 +4,6 @@ import (
 	"bladedb/memstore"
 	"fmt"
 	"github.com/pkg/errors"
-	"time"
 )
 
 func Remove(key string) (value []byte, err error) {
@@ -24,7 +23,7 @@ func Remove(key string) (value []byte, err error) {
 	if err != nil {
 		return value, errors.Wrapf(err, "error while deleting key: %s", key)
 	}
-	ts := time.Now().UnixNano()
+	ts := NanoTime()
 	inactiveLogDetails, err := pInfo.logWriter.Write(keyByte, nil, ts, DefaultConstants.deleteReq)
 
 	if err != nil {
@@ -56,7 +55,7 @@ func Put(key string, valueByte []byte) error { //TODO - ts should be created aft
 	pInfo.writeLock.Lock()
 	defer pInfo.writeLock.Unlock()
 
-	ts := time.Now().UnixNano()
+	ts := NanoTime()
 	inactiveLogDetails, err := pInfo.logWriter.Write(keyByte, valueByte, ts, DefaultConstants.writeReq)
 
 	if err != nil {
