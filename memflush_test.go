@@ -30,7 +30,7 @@ func setupMemflushTest(partitionId int) func() {
 	//setup partition
 	partitionInfoMap[partitionId], _ = NewPartition(partitionId)
 	DefaultConstants.memFlushWorker = 3
-	DefaultConstants.compactActive = 0
+	DefaultConstants.compactWorker = 0
 	activateMemFlushWorkers()
 	deferFun := func() {
 		os.Remove(ManifestFileName)

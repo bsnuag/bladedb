@@ -26,7 +26,7 @@ func setupDBTest() (tearTest func()) {
 	SSTDir = sstdir
 	LogDir = logdir
 	ManifestFileName = manifestfile.Name()
-	DefaultConstants.compactActive = 0
+	DefaultConstants.compactWorker = 0
 	DefaultConstants.memFlushWorker = 0
 	DefaultConstants.noOfPartitions = 1
 

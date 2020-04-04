@@ -104,7 +104,7 @@ func prepareLogTest() (tearTest func()) {
 	SSTDir = sstdir
 	LogDir = logdir
 	ManifestFileName = manifestfile.Name()
-	DefaultConstants.compactActive = 0
+	DefaultConstants.compactWorker = 0
 	DefaultConstants.memFlushWorker = 0 //all inactive memtable will in memory+wal, wont be flushed to SST
 	DefaultConstants.noOfPartitions = 1
 	initManifest()

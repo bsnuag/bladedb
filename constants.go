@@ -28,7 +28,6 @@ type Constants struct {
 	minSSTCompact  int
 	levelMaxSST    map[int]uint32
 	compactWorker  int
-	compactActive  int32
 	memFlushWorker int
 
 	//network
@@ -61,7 +60,6 @@ var DefaultConstants = Constants{
 		6: 0, //infinite
 	},
 	compactWorker:  8,
-	compactActive:  1, //1=true, 0 = false
 	memFlushWorker: 8,
 
 	ClientListenPort: 9099,
