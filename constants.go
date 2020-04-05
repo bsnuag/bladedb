@@ -7,10 +7,10 @@ type Constants struct {
 	deleteReq byte
 
 	logFileMaxLen   uint32
-	logRecHeaderLen int
-
-	fileDelete byte
-	fileCreate byte
+	keyMaxLen       uint32
+	valueMaxLen     uint32
+	fileDelete      byte
+	fileCreate      byte
 
 	logFileType byte
 	sstFileType byte
@@ -38,7 +38,8 @@ var DefaultConstants = Constants{
 	writeReq:            0,
 	deleteReq:           1,
 	logFileMaxLen:       32e+6,
-	logRecHeaderLen:     6,
+	keyMaxLen:           1<<16 - 1,
+	valueMaxLen:         1<<16 - 1,
 	fileDelete:          1,
 	fileCreate:          0,
 	logFileType:         0,

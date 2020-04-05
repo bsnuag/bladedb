@@ -23,8 +23,6 @@ type SSTRecMeta struct {
 }
 
 var SST_HEADER_LEN uint32 = 5
-//var SST_TABLE_MAX_LEN int64 = 1024
-//var maxSSTRecLen = 1024 //TODO - decide a proper len
 
 var SSTDir = "data/dbstore"
 var SSTBaseFileName = "/sst_%d_%d.sst"

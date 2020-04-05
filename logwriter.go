@@ -13,6 +13,12 @@ import (
 var LogDir = "data/commitlog"
 var LogBaseFileName = "/log_%d_%d.log"
 
+const logEncoderBufMetaLen = 1<<8 - 1 //1 byte(recType) + 16 bytes(ts)
+
+//logEncoderBuf - is shared among partitions, each works within a range of offset-offset+logEncoderPartLen. offset = partId * logEncoderPartLen
+var logEncoderPartLen = logEncoderBufMetaLen + DefaultConstants.keyMaxLen + DefaultConstants.keyMaxLen
+var logEncoderBuf = make([]byte, uint32(DefaultConstants.noOfPartitions)*logEncoderPartLen)
+
 /*
 	LogRecord - record to be inserted into log-commit files
 */
@@ -94,13 +100,9 @@ type LogEncoder interface {
 }
 
 //6 byte logrec fields length, rest bytes data
-func (logRec LogRecord) Encode() []byte {
-	keyLen := len(logRec.key)
-	valLen := len(logRec.value)
-
-	var logRecBuf = make([]byte, DefaultConstants.logRecHeaderLen+1+keyLen+valLen+8)
-	binary.LittleEndian.PutUint16(logRecBuf[0:2], uint16(keyLen))
-	binary.LittleEndian.PutUint16(logRecBuf[2:4], uint16(valLen))
+func (logRec LogRecord) Encode(logRecBuf []byte) uint32 {
+	binary.LittleEndian.PutUint16(logRecBuf[0:2], uint16(len(logRec.key)))
+	binary.LittleEndian.PutUint16(logRecBuf[2:4], uint16(len(logRec.value)))
 	binary.LittleEndian.PutUint16(logRecBuf[4:6], uint16(8))
 
 	offset := 6
@@ -110,20 +112,20 @@ func (logRec LogRecord) Encode() []byte {
 	offset += len(logRec.key)
 	copy(logRecBuf[offset:], logRec.value)
 	offset += len(logRec.value)
-	binary.PutUvarint(logRecBuf[offset:], logRec.Ts())
-	return logRecBuf
+	offset += binary.PutUvarint(logRecBuf[offset:], logRec.Ts())
+	return uint32(offset)
 }
 
 //writes data to wal file
 //checks if size is more than LogFileMaxLen. closed it and returns a summary rec
 func (writer *LogWriter) Write(key []byte, value []byte, ts uint64, recType byte) (*InactiveLogDetails, error) {
-
+	offset := uint32(writer.partitionId) * logEncoderPartLen //move to LogWriter
 	logRec := LogRecord{recType, key, value, ts}
-	logRecEncoded := logRec.Encode()
+	n := logRec.Encode(logEncoderBuf[offset : offset+logEncoderPartLen])
 
 	var inactiveLogDetails *InactiveLogDetails = nil
 
-	if writer.writeOffset+uint32(len(logRecEncoded)) >= DefaultConstants.logFileMaxLen {
+	if writer.writeOffset+n >= DefaultConstants.logFileMaxLen {
 		logDetails, err := writer.rollover()
 		if err != nil {
 			return inactiveLogDetails, err
@@ -131,10 +133,10 @@ func (writer *LogWriter) Write(key []byte, value []byte, ts uint64, recType byte
 		inactiveLogDetails = logDetails
 	}
 
-	if _, err := writer.fileWriter.Write(logRecEncoded[:]); err != nil {
+	if _, err := writer.fileWriter.Write(logEncoderBuf[offset : offset+n]); err != nil {
 		return inactiveLogDetails, err
 	}
-	writer.writeOffset += uint32(len(logRecEncoded))
+	writer.writeOffset += n
 
 	return inactiveLogDetails, nil
 }

@@ -185,5 +185,3 @@ func (pInfo *PartitionInfo) prepareMemFlushInput(start int, end int, reqType byt
 		PartitionId: pInfo.partitionId,
 	}
 }
-
-//TODO - when these test runs error comes - close of closed channel
