@@ -4,6 +4,7 @@ import (
 	"crypto/sha256"
 	"fmt"
 	"github.com/spaolacci/murmur3"
+	"sort"
 	"time"
 )
 
@@ -41,4 +42,13 @@ func newLevelInfo() map[int]*LevelInfo {
 
 func NanoTime() uint64 {
 	return uint64(time.Now().UnixNano()) / 1000
+}
+
+func sortedKeys(inMap map[uint32]SSTReader) []uint32 {
+	sortedKeys := make([]uint32, 0, len(inMap))
+	for k := range inMap {
+		sortedKeys = append(sortedKeys, k)
+	}
+	sort.Slice(sortedKeys, func(i, j int) bool { return sortedKeys[i] < sortedKeys[j] })
+	return sortedKeys
 }
