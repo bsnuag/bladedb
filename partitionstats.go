@@ -35,22 +35,22 @@ func PrintPartitionStats() {
 }
 
 type PartitionStat struct {
-	pId             int
-	keys            int64
-	activeMemTables int
-	sstCount        int64
+	pId               int
+	keys              int64
+	inactiveMemTables int
+	sstCount          int64
 }
 
 func GetPartitionStats() []PartitionStat {
 	pStats := make([]PartitionStat, DefaultConstants.noOfPartitions)
 	for partitionId := 0; partitionId < DefaultConstants.noOfPartitions; partitionId++ {
 		pStat := PartitionStat{
-			pId:             partitionId,
-			keys:            partitionInfoMap[partitionId].partitionNoOfKeys(),
-			activeMemTables: len(partitionInfoMap[partitionId].inactiveLogDetails),
-			sstCount:        int64(len(partitionInfoMap[partitionId].sstReaderMap)),
+			pId:               partitionId,
+			keys:              partitionInfoMap[partitionId].partitionNoOfKeys(),
+			inactiveMemTables: len(partitionInfoMap[partitionId].inactiveLogDetails),
+			sstCount:          int64(len(partitionInfoMap[partitionId].sstReaderMap)),
 		}
-		pStats = append(pStats, pStat)
+		pStats[partitionId] = pStat
 	}
 	return pStats
 }

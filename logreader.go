@@ -19,20 +19,6 @@ func deleteLog(partitionId int, seqNum uint32) error {
 	return os.Remove(fileName)
 }
 
-/*func newLogReader(partitionId int, seqNum uint32) (*LogReader, error) {
-	fileName := LogDir + fmt.Sprintf(LogBaseFileName, seqNum, partitionId)
-	file, err := os.OpenFile(fileName, os.O_RDONLY, 0644)
-
-	if err != nil {
-		fmt.Printf("Error while opening WAL file:%s", fileName)
-		return nil, err
-	}
-	return &LogReader{
-		file:       file,
-		fileReader: bufio.NewReader(file),
-	}, nil
-}*/
-
 func maxLogSeq(partId int) (uint32, error) {
 	maxLogSeq := uint32(0)
 	if manifestFile.manifest == nil {

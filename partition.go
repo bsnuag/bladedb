@@ -83,18 +83,21 @@ func PreparePartitionIdsMap() error {
 		}
 
 		pInfo.logWriter = logWriter
-		pInfo.loadUnclosedLogFile()
 	}
 
 	loadDbStateGroup := errgroup.Group{}
 	for partitionId := 0; partitionId < DefaultConstants.noOfPartitions; partitionId++ {
 		pInfo := partitionInfoMap[partitionId]
+
 		loadDbStateGroup.Go(func() error {
 			if err := pInfo.loadUnclosedLogFile(); err != nil {
 				return errors.Wrapf(err, "Error while loading unclosed log files from log-manifest: %v",
 					manifestFile.manifest.logManifest[pInfo.partitionId])
 			}
-			for _, reader := range pInfo.sstReaderMap {
+
+			sortedKeys := sortedKeys(pInfo.sstReaderMap)
+			for _, key := range sortedKeys {
+				reader := pInfo.sstReaderMap[key]
 				if _, err := (&reader).loadSSTRec(pInfo.index); err != nil {
 					return errors.Wrapf(err, "Error while loading index from active ssts : %v", pInfo.sstReaderMap)
 				}
@@ -137,7 +140,6 @@ func NewPartition(partitionId int) (*PartitionInfo, error) {
 func flushPendingMemTables() {
 	for _, pInfo := range partitionInfoMap {
 		for i := 0; i < len(pInfo.inactiveLogDetails); i++ {
-			fmt.Println("-- -- ", pInfo.inactiveLogDetails[i])
 			publishMemFlushTask(pInfo.inactiveLogDetails[i])
 		}
 	}
@@ -207,7 +209,10 @@ func Drain() {
 	stopMemFlushWorker()
 	stopCompactWorker()
 	closeAllActiveSSTReaders()
-	closeManifest()
+	if err := closeManifest(); err != nil {
+		fmt.Println(err)
+	}
+	partitionInfoMap = make(map[int]*PartitionInfo) //clear index map
 }
 
 // works similar to nodetool flush
@@ -239,4 +244,3 @@ func (pInfo *PartitionInfo) flushPartition(wg *sync.WaitGroup) {
 	pInfo.writeLock.Unlock()
 	wg.Done()
 }
-

@@ -153,6 +153,7 @@ func (reader SSTReader) ReadRec(offset int64) (*SSTRec, error) {
 //index is thread-safe
 //this is invoked sequentially
 func (reader *SSTReader) loadSSTRec(idx *index.SkipList) (int64, error) {
+	fmt.Println(fmt.Sprintf("loading sst seqno: %d, partitionId: %d", reader.SeqNm, reader.partitionId))
 	var recsRead int64 = 0
 	var readOffset uint32 = 0
 	info, err := reader.file.Stat()
@@ -205,6 +206,11 @@ func (reader *SSTReader) loadSSTRec(idx *index.SkipList) (int64, error) {
 		readOffset += (SST_HEADER_LEN) + (sstRecLength)
 		recsRead++
 	}
+	fmt.Println(fmt.Sprintf("loading complete "+
+		"sst seqno: %d, partitionId: %d, recs loaded: %d, "+
+		"delete-req: %d, write-req: %d, start-key: %s, end-key: %s",
+		reader.SeqNm, reader.partitionId, recsRead, reader.noOfDelReq,
+		reader.noOfWriteReq, string(reader.startKey), string(reader.endKey)))
 	return recsRead, nil
 }
 
