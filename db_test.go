@@ -6,6 +6,7 @@ import (
 	"io/ioutil"
 	"log"
 	"os"
+	"sync"
 	"testing"
 )
 
@@ -40,91 +41,68 @@ func setupDBTest() (tearTest func()) {
 	}
 }
 
-func TestDBWrite_With_Reload(t *testing.T) {
-	defer setupDBTest()()
-
-	Open()
-	for i := 0; i < 2000; i++ {
-		Put(fmt.Sprintf("Key:%d", i), []byte(fmt.Sprintf("Value:%d", i)))
-	}
-	Drain()           //similar to close DB
-	openErr := Open() //reopen db
-	require.Nil(t, openErr)
-	for i := 0; i < 2000; i++ {
-		bytes, _ := Get(fmt.Sprintf("Key:%d", i))
-		require.NotNil(t, bytes)
-	}
-	Drain()
-}
-
 //writes & closes - 1. test db reload from manifest is correct, 2. test if deleted keys re-appears,
 func TestDBWrite_With_Reload_MemFlush(t *testing.T) {
 	defer setupDBTest()()
 
-	DefaultConstants.noOfPartitions = 1
-	DefaultConstants.memFlushWorker = 1 //override
+	DefaultConstants.noOfPartitions = 8
+	DefaultConstants.memFlushWorker = 8 //override
 
+	wg:=sync.WaitGroup{}
 	Open()
+	wg.Add(5000)
 	for i := 0; i < 5000; i++ {
-		Put(fmt.Sprintf("Key:%d", i), []byte(fmt.Sprintf("Value:%d", i)))
+		go func(j int) {// goroutines are used to test if parallel write to log encoder buffer is working properly
+			Put(fmt.Sprintf("Key:%d", j), []byte(fmt.Sprintf("Value:%d", j)))
+			wg.Done()
+		}(i)
 	}
+	wg.Wait()
 	pStats := GetPartitionStats()
-	require.True(t, pStats[0].keys == 5000)
-	require.True(t, pStats[0].sstCount == 0)
-	require.True(t, pStats[0].inactiveMemTables == 0)
+	require.True(t, totalKeys(pStats) == 5000)
+	for _, pStat := range pStats {
+		require.True(t, pStat.sstCount == 0)
+		require.True(t, pStat.inactiveMemTables == 0)
+	}
 	Drain() //similar to close DB
 
 	Open() //reopen db
+	wg.Add(1000)
 	for i := 0; i < 1000; i++ {
-		Remove(fmt.Sprintf("Key:%d", i))
+		go func(j int) {
+			Remove(fmt.Sprintf("Key:%d", j))
+			wg.Done()
+		}(i)
 	}
-	for i := 0; i < 5000; i++ {//remove this loop later
-		key:=fmt.Sprintf("Key:%d", i)
-		bytes, _ := Get(key)
-		if i < 1000 {
-			require.Nil(t, bytes)
-		} else {
-			require.NotNil(t, bytes)
-		}
-	}
-
+	wg.Wait()
 	pStats = GetPartitionStats()
-	require.True(t, pStats[0].keys == 5000) //4000 index + 1000 memtable
-	require.True(t, pStats[0].sstCount == 1)
-	require.True(t, pStats[0].inactiveMemTables == 0)
+	require.True(t, totalKeys(pStats) == 5000) //4000 index + 1000 memtable
+	for _, pStat := range pStats {
+		require.True(t, pStat.sstCount == 1)
+		require.True(t, pStat.inactiveMemTables == 0)
+	}
 	Drain() //1000 delete request will go to SST (2nd SST)
 
 	Open() //reopen db
-
-	recs := partitionInfoMap[0].memTable.Recs()
-	iterator := recs.NewIterator()
-
-	for iterator.Next() {
-		val := iterator.Value()
-		if val.Key() == "Key:1010" {
-			break
-		}
-	}
-	indexIt := partitionInfoMap[0].index.NewIterator()
-	for indexIt.Next() {
-		val := indexIt.Value()
-		if val.Key() == "Key:1110" {
-			break
-		}
-	}
+	wg.Add(5000)
 	for i := 0; i < 5000; i++ {
-		key:=fmt.Sprintf("Key:%d", i)
-		bytes, _ := Get(key)
-		if i < 1000 {
-			require.Nil(t, bytes)
-		} else {
-			require.NotNil(t, bytes)
-		}
+		go func(j int) {
+			key := fmt.Sprintf("Key:%d", j)
+			bytes, _ := Get(key)
+			if j < 1000 {
+				require.Nil(t, bytes)
+			} else {
+				require.NotNil(t, bytes)
+			}
+			wg.Done()
+		}(i)
 	}
+	wg.Wait()
 	pStats = GetPartitionStats()
-	require.True(t, pStats[0].keys == 4000)
-	require.True(t, pStats[0].sstCount == 2)
-	require.True(t, pStats[0].inactiveMemTables == 0)
-
+	require.True(t, totalKeys(pStats) == 4000)
+	for _, pStat := range pStats {
+		require.True(t, pStat.sstCount == 2)
+		require.True(t, pStat.inactiveMemTables == 0)
+	}
 	Drain()
 }
