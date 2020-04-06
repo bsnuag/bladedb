@@ -169,7 +169,7 @@ func TestMemFlushWriteSSTAndIndex_SSTMeta(t *testing.T) {
 
 func (pInfo *PartitionInfo) prepareMemFlushInput(start int, end int, reqType byte, ts uint64) InactiveLogDetails {
 	//Write data into mem and then flush it to sst
-	memTable, _ := memstore.NewMemStore(pInfo.partitionId)
+	memTable, _ := memstore.NewMemStore()
 
 	for i := start; i < end; i++ {
 		key := fmt.Sprintf("%dKey_", i)

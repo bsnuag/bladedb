@@ -118,7 +118,7 @@ func PreparePartitionIdsMap() error {
 }
 
 func NewPartition(partitionId int) (*PartitionInfo, error) {
-	memTable, err := memstore.NewMemStore(partitionId)
+	memTable, err := memstore.NewMemStore()
 	if err != nil {
 		return nil, err
 	}
