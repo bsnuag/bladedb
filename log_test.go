@@ -156,7 +156,7 @@ func TestLogWrite_RecoverRead(t *testing.T) {
 		details, _ := pInfo.logWriter.FlushAndClose()
 		pInfo.inactiveLogDetails = append(pInfo.inactiveLogDetails, details)
 		oldMemTable := pInfo.memTable
-		pInfo.memTable, _ = memstore.NewMemStore(pInfo.partitionId)
+		pInfo.memTable, _ = memstore.NewMemStore()
 		for _, logDetails := range pInfo.inactiveLogDetails {
 			details, _ := pInfo.loadLogFile(logDetails.FileSeqNum)
 			require.NotNil(t, details.WriteOffset)
@@ -164,8 +164,10 @@ func TestLogWrite_RecoverRead(t *testing.T) {
 			require.True(t, (pInfo.memTable.Size() == int64(writesN/2)) || pInfo.memTable.Size() == int64(writesN))
 			itr := oldMemTable.Recs().NewIterator()
 			for itr.Next() {
-				oldMemRec := itr.Value().Value().(*memstore.MemRec)
-				activeMemRec, _ := pInfo.memTable.Find(oldMemRec.Key)
+				next:=itr.Value()
+				oldKey := []byte(next.Key())
+				oldMemRec := next.Value().(*memstore.MemRec)
+				activeMemRec, _ := pInfo.memTable.Find(oldKey)
 				require.True(t, bytes.Equal(oldMemRec.Value, activeMemRec.Value))
 				require.True(t, oldMemRec.TS == activeMemRec.TS)
 				require.True(t, oldMemRec.RecType == activeMemRec.RecType)

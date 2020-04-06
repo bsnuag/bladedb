@@ -12,13 +12,12 @@ type MemTable struct {
 }
 
 type MemRec struct {
-	Key     []byte
 	Value   []byte
 	TS      uint64
 	RecType byte
 }
 
-func NewMemStore(partitionId int) (*MemTable, error) {
+func NewMemStore() (*MemTable, error) {
 	memTable := &MemTable{
 		list: sklist.New(),
 	}
@@ -26,9 +25,7 @@ func NewMemStore(partitionId int) (*MemTable, error) {
 }
 
 func (memTable *MemTable) Insert(key []byte, value []byte, ts uint64, reqType byte) {
-	keyString := string(key)
-
-	memTable.list.Set(keyString, &MemRec{key, value, ts, reqType})
+	memTable.list.Set(string(key), &MemRec{value, ts, reqType})
 }
 
 func (memTable *MemTable) Find(key []byte) (value *MemRec, err error) {

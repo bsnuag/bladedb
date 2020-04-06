@@ -96,20 +96,21 @@ func (pInfo *PartitionInfo) writeSSTAndIndex(memRecs *sklist.SkipList) (seqNum u
 	iterator := memRecs.NewIterator()
 	for iterator.Next() {
 		next := iterator.Value()
+		key := []byte(next.Key())
 		value := next.Value().(*memstore.MemRec)
 		indexRec := index.IndexRec{
 			SSTRecOffset:  sstWriter.Offset,
 			SSTFileSeqNum: sstWriter.SeqNum,
 			TS:            value.TS,
 		}
-		_, sstErr := sstWriter.Write(value.Key, value.Value, value.TS, value.RecType)
+		_, sstErr := sstWriter.Write(key, value.Value, value.TS, value.RecType)
 		if sstErr != nil {
 			panic(sstErr)
 		}
 
 		//if rec type is writeReq then load to index, delete request need not load to index
 		if value.RecType == DefaultConstants.writeReq {
-			keyHash, _ := GetHash(value.Key)
+			keyHash, _ := GetHash(key)
 			idxmap[keyHash] = indexRec
 			noOfWriteReq++
 		} else {
@@ -117,9 +118,9 @@ func (pInfo *PartitionInfo) writeSSTAndIndex(memRecs *sklist.SkipList) (seqNum u
 		}
 
 		if startKey == nil {
-			startKey = value.Key
+			startKey = key
 		}
-		endKey = value.Key
+		endKey = key
 	}
 
 	flushedFileSeqNum, err := sstWriter.FlushAndClose()
