@@ -80,7 +80,7 @@ func (pInfo *PartitionInfo) handleRolledOverLogDetails(inactiveLogDetails *Inact
 
 	oldMemTable := pInfo.memTable
 
-	memTable, err := memstore.NewMemStore(pInfo.partitionId)
+	memTable, err := memstore.NewMemStore()
 	if err != nil {
 		panic(err)
 		return

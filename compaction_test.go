@@ -404,7 +404,7 @@ func prepareInputSSTs(dir string, partitionId int) (SSTReader, SSTReader) {
 	sKe1 := ""
 	eKey1 := ""
 	var writeCount1 uint64 = 0
-	memTable, _ := memstore.NewMemStore(partitionId)
+	memTable, _ := memstore.NewMemStore()
 	for i := 0; i < 20; i++ {
 		time.Sleep(time.Nanosecond * 10)
 		key := fmt.Sprintf("%dKey_", i)
@@ -415,13 +415,14 @@ func prepareInputSSTs(dir string, partitionId int) (SSTReader, SSTReader) {
 	iterator := memTable.Recs().NewIterator()
 	for iterator.Next() {
 		next := iterator.Value()
+		key:=[]byte(next.Key())
 		mRec := next.Value().(*memstore.MemRec)
-		sstWriter1.Write(mRec.Key, mRec.Value, mRec.TS, mRec.RecType)
+		sstWriter1.Write(key, mRec.Value, mRec.TS, mRec.RecType)
 		writeCount1++
 		if sKe1 == "" {
-			sKe1 = string(mRec.Key)
+			sKe1 = string(key)
 		}
-		eKey1 = string(mRec.Key)
+		eKey1 = string(key)
 		//fmt.Println(fmt.Sprintf("Key: %s, time: %d", string(mRec.Key), mRec.TS))
 		iterator.Next()
 	}
@@ -441,13 +442,14 @@ func prepareInputSSTs(dir string, partitionId int) (SSTReader, SSTReader) {
 	iterator = memTable.Recs().NewIterator()
 	for iterator.Next() {
 		next := iterator.Value()
+		key := []byte(next.Key())
 		mRec := next.Value().(*memstore.MemRec)
-		sstWriter2.Write(mRec.Key, mRec.Value, mRec.TS, mRec.RecType)
+		sstWriter2.Write(key, mRec.Value, mRec.TS, mRec.RecType)
 		deleteCount2++
 		if sKey2 == "" {
-			sKey2 = string(mRec.Key)
+			sKey2 = string(key)
 		}
-		eKey2 = string(mRec.Key)
+		eKey2 = string(key)
 		//fmt.Println(fmt.Sprintf("Key: %s, time: %d", string(mRec.Key), mRec.TS))
 		iterator.Next()
 	}
