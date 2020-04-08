@@ -5,16 +5,15 @@ import (
 	"github.com/pkg/errors"
 )
 
-func Get(key string) ([]byte, error) {
-	keyByte := []byte(key)
-	keyHash, _ := GetHash(keyByte)
-	partitionId := GetPartitionId(keyHash)
+func Get(key []byte) ([]byte, error) {
+	hash := Hash(key)
+	partitionId := PartitionId(hash[:])
 	pInfo := partitionInfoMap[partitionId]
 
 	pInfo.readLock.RLock()
 	defer pInfo.readLock.RUnlock()
 
-	memRec, _ := pInfo.memTable.Find(keyByte)
+	memRec, _ := pInfo.memTable.Find(key)
 
 	if memRec != nil {
 		if memRec.RecType == DefaultConstants.deleteReq { //if delete request
@@ -27,7 +26,7 @@ func Get(key string) ([]byte, error) {
 	i := len(pInfo.inactiveLogDetails) - 1
 	for ; i >= 0; i-- {
 		inactiveLog := pInfo.inactiveLogDetails[i]
-		memRec, err := inactiveLog.MemTable.Find(keyByte)
+		memRec, err := inactiveLog.MemTable.Find(key)
 		if err != nil {
 			return nil, errors.Wrapf(err, "Error while reading data from inactive memtables for key: %s", key)
 		}
@@ -39,8 +38,7 @@ func Get(key string) ([]byte, error) {
 		}
 	}
 
-	if indexVal := pInfo.index.Get(keyHash); indexVal != nil {
-		indexRec := indexVal.Value()
+	if indexRec, ok := pInfo.index.Get(hash); ok {
 		stableRec, err := pInfo.getFromSST(indexRec.SSTFileSeqNum, indexRec.SSTRecOffset)
 
 		if err != nil {

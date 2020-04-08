@@ -1,7 +1,6 @@
 package bladedb
 
 import (
-	"bladedb/index"
 	"bladedb/memstore"
 	"bladedb/sklist"
 	"fmt"
@@ -91,14 +90,13 @@ func (pInfo *PartitionInfo) writeSSTAndIndex(memRecs *sklist.SkipList) (seqNum u
 	if err != nil {
 		panic(err)
 	}
-	idxmap := make(map[string]index.IndexRec)
 	//flush memRecs to SST and index
 	iterator := memRecs.NewIterator()
 	for iterator.Next() {
 		next := iterator.Value()
 		key := []byte(next.Key())
 		value := next.Value().(*memstore.MemRec)
-		indexRec := index.IndexRec{
+		indexRec := IndexRec{
 			SSTRecOffset:  sstWriter.Offset,
 			SSTFileSeqNum: sstWriter.SeqNum,
 			TS:            value.TS,
@@ -110,8 +108,8 @@ func (pInfo *PartitionInfo) writeSSTAndIndex(memRecs *sklist.SkipList) (seqNum u
 
 		//if rec type is writeReq then load to index, delete request need not load to index
 		if value.RecType == DefaultConstants.writeReq {
-			keyHash, _ := GetHash(key)
-			idxmap[keyHash] = indexRec
+			keyHash := Hash(key[:])
+			pInfo.index.Set(keyHash,indexRec)
 			noOfWriteReq++
 		} else {
 			noOfDelReq++
@@ -129,8 +127,6 @@ func (pInfo *PartitionInfo) writeSSTAndIndex(memRecs *sklist.SkipList) (seqNum u
 		fmt.Println("Error while flushing data sst")
 		panic(err)
 	}
-	//update index
-	pInfo.index.SetBatch(idxmap)
 
 	levelNum := 0
 	sstReader, err := NewSSTReader(flushedFileSeqNum, pInfo.partitionId)

@@ -53,7 +53,7 @@ func TestDBWrite_With_Reload_MemFlush(t *testing.T) {
 	wg.Add(5000)
 	for i := 0; i < 5000; i++ {
 		go func(j int) {// goroutines are used to test if parallel write to log encoder buffer is working properly
-			Put(fmt.Sprintf("Key:%d", j), []byte(fmt.Sprintf("Value:%d", j)))
+			Put([]byte(fmt.Sprintf("Key:%d", j)), []byte(fmt.Sprintf("Value:%d", j)))
 			wg.Done()
 		}(i)
 	}
@@ -70,7 +70,7 @@ func TestDBWrite_With_Reload_MemFlush(t *testing.T) {
 	wg.Add(1000)
 	for i := 0; i < 1000; i++ {
 		go func(j int) {
-			Remove(fmt.Sprintf("Key:%d", j))
+			Remove([]byte(fmt.Sprintf("Key:%d", j)))
 			wg.Done()
 		}(i)
 	}
@@ -87,7 +87,7 @@ func TestDBWrite_With_Reload_MemFlush(t *testing.T) {
 	wg.Add(5000)
 	for i := 0; i < 5000; i++ {
 		go func(j int) {
-			key := fmt.Sprintf("Key:%d", j)
+			key := []byte(fmt.Sprintf("Key:%d", j))
 			bytes, _ := Get(key)
 			if j < 1000 {
 				require.Nil(t, bytes)

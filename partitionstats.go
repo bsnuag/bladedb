@@ -8,7 +8,7 @@ func PrintPartitionStats() {
 	for partId, pInfo := range partitionInfoMap {
 		fmt.Println(fmt.Sprintf("\n\n--------------- Stats for PartitionId: %d ---------------", partId))
 		fmt.Println(fmt.Sprintf("PartitionId: %d", partId))
-		fmt.Println(fmt.Sprintf("No of Keys in Index: %d", pInfo.index.Length))
+		fmt.Println(fmt.Sprintf("No of Keys in Index: %d", pInfo.index.Size()))
 		fmt.Println(fmt.Sprintf("No of Keys in active Mem: %d", pInfo.memTable.Size()))
 		var inactiveMemSize int64 = 0
 		for _, inactiveLogDetail := range pInfo.inactiveLogDetails {
@@ -56,7 +56,7 @@ func GetPartitionStats() []PartitionStat {
 }
 
 func (pInfo PartitionInfo) partitionNoOfKeys() int64 {
-	noOfKeys := int64(pInfo.index.Length) //noOfKeys is combination of active keys + keys which are deleted
+	noOfKeys := int64(pInfo.index.Size()) //noOfKeys is combination of active keys + keys which are deleted
 
 	pInfo.readLock.Lock()
 	noOfKeys += pInfo.memTable.Size()

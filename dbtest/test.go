@@ -24,11 +24,11 @@ func indexTest() {
 	s := time.Now()
 	PrintMemUsage()
 
-	idx := index.NewIndex()
+	idx := NewIndex()
 	var n int64 = 30000000
 	var i int64 = 0
 	for ; i < n; i++ {
-		indexRec := index.IndexRec{
+		indexRec := IndexRec{
 			SSTRecOffset:  uint32(i),
 			SSTFileSeqNum: uint32(i),
 			TS:            bladedb.NanoTime(),

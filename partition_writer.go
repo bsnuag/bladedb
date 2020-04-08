@@ -6,10 +6,9 @@ import (
 	"github.com/pkg/errors"
 )
 
-func Remove(key string) (value []byte, err error) {
-	keyByte := []byte(key)
-	keyHash, _ := GetHash(keyByte)
-	partitionId := GetPartitionId(keyHash)
+func Remove(key []byte) (value []byte, err error) {
+	hash := Hash(key)
+	partitionId := PartitionId(hash[:])
 	pInfo := partitionInfoMap[partitionId]
 
 	if pInfo == nil {
@@ -24,7 +23,7 @@ func Remove(key string) (value []byte, err error) {
 		return value, errors.Wrapf(err, "error while deleting key: %s", key)
 	}
 	ts := NanoTime()
-	inactiveLogDetails, err := pInfo.logWriter.Write(keyByte, nil, ts, DefaultConstants.deleteReq)
+	inactiveLogDetails, err := pInfo.logWriter.Write(key, nil, ts, DefaultConstants.deleteReq)
 
 	if err != nil {
 		return value, errors.Wrapf(err, "error while deleting key: %s", key)
@@ -35,16 +34,15 @@ func Remove(key string) (value []byte, err error) {
 	}
 
 	//pInfo.readLock.Lock() - skiplist is thread-safe
-	pInfo.memTable.Insert(keyByte, nil, ts, DefaultConstants.deleteReq) //We need to put delete rec in mem, since it gets into SST later
-	pInfo.index.Remove(keyHash)
+	pInfo.memTable.Insert(key, nil, ts, DefaultConstants.deleteReq) //We need to put delete rec in mem, since it gets into SST later
+	pInfo.index.Remove(hash)
 	//pInfo.readLock.Unlock() - skiplist is thread-safe
 	return value, nil
 }
 
-func Put(key string, valueByte []byte) error {
-	keyByte := []byte(key)
-	keyHash, _ := GetHash(keyByte)
-	partitionId := GetPartitionId(keyHash)
+func Put(key []byte, valueByte []byte) error {
+	hash := Hash(key)
+	partitionId := PartitionId(hash[:])
 	pInfo := partitionInfoMap[partitionId]
 
 	if pInfo == nil {
@@ -56,7 +54,7 @@ func Put(key string, valueByte []byte) error {
 	defer pInfo.writeLock.Unlock()
 
 	ts := NanoTime()
-	inactiveLogDetails, err := pInfo.logWriter.Write(keyByte, valueByte, ts, DefaultConstants.writeReq)
+	inactiveLogDetails, err := pInfo.logWriter.Write(key, valueByte, ts, DefaultConstants.writeReq)
 
 	if err != nil {
 		return errors.Wrap(err, "error while writing into db")
@@ -67,7 +65,7 @@ func Put(key string, valueByte []byte) error {
 	}
 
 	//pInfo.readLock.Lock()- skiplist is thread-safe
-	pInfo.memTable.Insert(keyByte, valueByte, ts, DefaultConstants.writeReq)
+	pInfo.memTable.Insert(key, valueByte, ts, DefaultConstants.writeReq)
 	//pInfo.readLock.Unlock()- skiplist is thread-safe
 	return nil
 }

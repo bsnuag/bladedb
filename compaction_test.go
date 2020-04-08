@@ -159,7 +159,7 @@ func TestFillLevels_level1WithNoLevel2Data(t *testing.T) {
 	require.Equal(t, 0, len(compactInfo.botLevelSST), "level 1 has only 3 files i.e. less than levelMaxSST, no file should be picked up for compaction")
 	require.Equal(t, 0, len(compactInfo.topLevelSST), "level 1 has only 3 files i.e. less than levelMaxSST, no file should be picked up for compaction")
 	require.Equal(t, 0, len(compactInfo.heap), "level 1 has only 3 files i.e. less than levelMaxSST, heap length should be zero")
-	require.Equal(t, 0, compactInfo.idx.Length, "level 1 has only 3 files i.e. less than levelMaxSST, index length should be zero")
+	require.Equal(t, 0, compactInfo.idx.Size(), "level 1 has only 3 files i.e. less than levelMaxSST, index length should be zero")
 }
 
 func TestFillLevels_level1WithOverlap(t *testing.T) {
@@ -380,7 +380,7 @@ func TestBuildCompactionBaseLevelAs0(t *testing.T) {
 	for i := 0; i < len(actualKeyOrder)-1; i++ {
 		require.LessOrEqual(t, actualKeyOrder[i], actualKeyOrder[i+1], "keys(from compaction heap) must be in sorted order")
 	}
-	require.Equal(t, 25, compactInfo.idx.Length, "Expecting 25 entries in index post compaction")
+	require.Equal(t, 25, compactInfo.idx.Size(), "Expecting 25 entries in index post compaction")
 	require.Equal(t, 25, sstRecCount, "Expecting 25 recs in new sst post compaction")
 }
 

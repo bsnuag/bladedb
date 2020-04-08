@@ -1,10 +1,8 @@
 package bladedb
 
 import (
-	"bladedb/index"
 	"fmt"
 	"github.com/stretchr/testify/require"
-	"grpc/utils"
 	"io/ioutil"
 	"log"
 	"math"
@@ -42,7 +40,7 @@ func TestLoadSSTRec_Mix_Delele_And_Write(t *testing.T) {
 	}
 	// update SSTDir to temp directory
 	SSTDir = dir
-	index := index.NewIndex()
+	index := NewIndex()
 
 	sReader1, sReader2 := prepareInputSSTs(dir, partitionId)
 	//sReader1 writeReq - 0Key_ to 19Key_
@@ -66,13 +64,13 @@ func TestLoadSSTRec_Mix_Delele_And_Write(t *testing.T) {
 	expectedIndexKeys["7Key_"] = struct{}{}
 	expectedIndexKeys["4Key_"] = struct{}{}
 
-	require.True(t, index.Length == len(expectedIndexKeys),
-		fmt.Sprintf("Expected %d numbers of keys in index", index.Length))
+	require.True(t, index.Size() == len(expectedIndexKeys),
+		fmt.Sprintf("Expected %d numbers of keys in index", index.Size()))
 
 	for key, _ := range expectedIndexKeys {
-		hash, _ := utils.GetHash([]byte(key))
-		exists := index.Get(hash) != nil
-		require.True(t, exists, fmt.Sprintf("Expected key %s (hash: %s) is missing from index", key, hash))
+		hash := Hash([]byte(key))
+		_, ok := index.Get(hash)
+		require.True(t, ok, fmt.Sprintf("Expected key %s (hash: %s) is missing from index", key, hash))
 	}
 }
 
@@ -84,7 +82,7 @@ func TestLoadSSTRec_Only_Write(t *testing.T) {
 	}
 	// update SSTDir to temp directory
 	SSTDir = dir
-	index := index.NewIndex()
+	index := NewIndex()
 
 	sReader1, sReader2 := prepareInputSSTs(dir, partitionId)
 	//sReader1 writeReq - 0Key_ to 19Key_
@@ -94,18 +92,21 @@ func TestLoadSSTRec_Only_Write(t *testing.T) {
 
 	sReader1.loadSSTRec(index)
 
-	require.True(t, index.Length == 20,
-		fmt.Sprintf("Expected %d numbers of keys in index", index.Length))
+	require.True(t, index.Size() == 20,
+		fmt.Sprintf("Expected %d numbers of keys in index", index.Size()))
 	//random exists check
 
-	hash, _ := GetHash([]byte("0Key_"))
-	require.NotNil(t, index.Get(hash), fmt.Sprintf("expected key %s not in index", "0Key_"))
+	hash := Hash([]byte("0Key_"))
+	_, ok := index.Get(hash)
+	require.True(t, ok, fmt.Sprintf("expected key %s not in index", "0Key_"))
 
-	hash1, _ := GetHash([]byte("8Key_"))
-	require.NotNil(t, index.Get(hash1), fmt.Sprintf("expected key %s not in index", "8Key_"))
+	hash1 := Hash([]byte("8Key_"))
+	_, ok = index.Get(hash1)
+	require.NotNil(t, ok, fmt.Sprintf("expected key %s not in index", "8Key_"))
 
-	hash2, _ := GetHash([]byte("19Key_"))
-	require.NotNil(t, index.Get(hash2), fmt.Sprintf("expected key %s not in index", "19Key_"))
+	hash2 := Hash([]byte("19Key_"))
+	_, ok = index.Get(hash2)
+	require.NotNil(t, ok, fmt.Sprintf("expected key %s not in index", "19Key_"))
 }
 
 func TestLoadSSTRec_Only_Delete(t *testing.T) {
@@ -116,7 +117,7 @@ func TestLoadSSTRec_Only_Delete(t *testing.T) {
 	}
 	// update SSTDir to temp directory
 	SSTDir = dir
-	index := index.NewIndex()
+	index := NewIndex()
 
 	sReader1, sReader2 := prepareInputSSTs(dir, partitionId)
 	//sReader1 deleteReq - 10Key_ to 24Key_
@@ -126,6 +127,6 @@ func TestLoadSSTRec_Only_Delete(t *testing.T) {
 
 	sReader2.loadSSTRec(index)
 
-	require.True(t, index.Length == 0,
-		fmt.Sprintf("Expected %d numbers of keys in index", index.Length))
+	require.True(t, index.Size() == 0,
+		fmt.Sprintf("Expected %d numbers of keys in index", index.Size()))
 }
