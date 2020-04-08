@@ -1,7 +1,6 @@
 package bladedb
 
 import (
-	"bladedb/index"
 	"bladedb/memstore"
 	"fmt"
 	"github.com/pkg/errors"
@@ -22,7 +21,7 @@ type PartitionInfo struct {
 
 	logWriter *LogWriter
 
-	index              *index.SkipList //key(hash) - sstMetadata
+	index              *Index //key(hash) - sstMetadata
 	memTable           *memstore.MemTable
 	inactiveLogDetails []*InactiveLogDetails //
 	// should have which wal file it's a part of,
@@ -127,7 +126,7 @@ func NewPartition(partitionId int) (*PartitionInfo, error) {
 		writeLock:          &sync.Mutex{},
 		partitionId:        partitionId,
 		levelsInfo:         newLevelInfo(),
-		index:              index.NewIndex(),
+		index:              NewIndex(),
 		memTable:           memTable,
 		inactiveLogDetails: make([]*InactiveLogDetails, 0, 10), //expecting max of 10 inactive memtable
 		sstReaderMap:       make(map[uint32]SSTReader),

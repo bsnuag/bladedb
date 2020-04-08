@@ -1,7 +1,6 @@
 package bladedb
 
 import (
-	"bladedb/index"
 	"bufio"
 	"encoding/binary"
 	"fmt"
@@ -150,7 +149,7 @@ func (reader SSTReader) ReadRec(offset int64) (*SSTRec, error) {
 //bootstrapping activity
 //index is thread-safe
 //this is invoked sequentially
-func (reader *SSTReader) loadSSTRec(idx *index.SkipList) (int64, error) {
+func (reader *SSTReader) loadSSTRec(idx *Index) (int64, error) {
 	fmt.Println(fmt.Sprintf("loading sst seqno: %d, partitionId: %d", reader.SeqNm, reader.partitionId))
 	var recsRead int64 = 0
 	var readOffset uint32 = 0
@@ -164,20 +163,19 @@ func (reader *SSTReader) loadSSTRec(idx *index.SkipList) (int64, error) {
 		sstRecLength, sstRec := reader.readNext()
 
 		if sstRec.meta.recType == DefaultConstants.writeReq {
-			indexRec := index.IndexRec{
+			indexRec := IndexRec{
 				SSTRecOffset:  readOffset,
 				SSTFileSeqNum: reader.SeqNm,
 				TS:            sstRec.meta.ts,
 			}
 
 			//keyString := string(sstRec.key)
-			keyHash, _ := GetHash(sstRec.key)
+			keyHash := Hash(sstRec.key)
 
-			indexVal := idx.Get(keyHash)
-			if indexVal == nil {
+			idRec, ok := idx.Get(keyHash)
+			if !ok {
 				idx.Set(keyHash, indexRec)
 			} else {
-				idRec := indexVal.Value()
 				if idRec.TS < sstRec.meta.ts {
 					idx.Set(keyHash, idRec)
 				}
@@ -186,11 +184,10 @@ func (reader *SSTReader) loadSSTRec(idx *index.SkipList) (int64, error) {
 			reader.noOfWriteReq++
 		} else {
 			reader.noOfDelReq++
-			keyHash, _ := GetHash(sstRec.key)
-			indexVal := idx.Get(keyHash)
+			keyHash := Hash(sstRec.key)
+			idRec, ok := idx.Get(keyHash)
 			//remove if delete timestamp is > any write timestamp
-			if indexVal != nil {
-				idRec := indexVal.Value()
+			if ok {
 				if idRec.TS < sstRec.meta.ts {
 					idx.Remove(keyHash)
 				}

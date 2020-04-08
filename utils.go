@@ -2,32 +2,17 @@ package bladedb
 
 import (
 	"crypto/sha256"
-	"fmt"
-	"github.com/spaolacci/murmur3"
+	"encoding/binary"
 	"sort"
 	"time"
 )
 
-func GetHash(input []byte) (string, error) {
-	h := sha256.New()
-	_, err := h.Write(input)
-	if err != nil {
-		panic(err)
-		return "", err
-	}
-	return fmt.Sprintf("%x", h.Sum(nil)), nil
+func Hash(input []byte) ([32]byte) { //thread safe ?
+	return sha256.Sum256(input)
 }
 
-func GetPartitionId(key interface{}) int {
-	switch v := key.(type) {
-	default:
-		fmt.Printf("unexpected type %T", v)
-		panic("Error while getting partitionId")
-	case []byte:
-		return int(murmur3.Sum64(key.([]byte)) % uint64(DefaultConstants.noOfPartitions))
-	case string:
-		return int(murmur3.Sum64([]byte(key.(string))) % uint64(DefaultConstants.noOfPartitions))
-	}
+func PartitionId(input []byte) int {
+	return int(binary.LittleEndian.Uint16(input[:2]) % uint16(DefaultConstants.noOfPartitions))
 }
 
 func newLevelInfo() map[int]*LevelInfo {

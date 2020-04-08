@@ -1,7 +1,6 @@
 package bladedb
 
 import (
-	"bladedb/index"
 	"container/heap"
 	"fmt"
 	"os"
@@ -79,7 +78,7 @@ type CompactInfo struct {
 	botLevelSST   []SSTReader
 	topLevelSST   []SSTReader
 	newSSTReaders []SSTReader
-	idx           *index.SkipList
+	idx           *Index
 	heap          heapArr
 }
 
@@ -152,7 +151,7 @@ func compactWorker(workerName string) {
 				"Compacted Index Size:%d\n "+
 				"New SSTs generated:%v\n",
 				time.Since(compactStartTime).Seconds(), len(compactInfo.botLevelSST),
-				len(compactInfo.topLevelSST), compactInfo.idx.Length, compactInfo.newSSTReaders))
+				len(compactInfo.topLevelSST), compactInfo.idx.Size(), compactInfo.newSSTReaders))
 		}
 	}
 }
@@ -198,7 +197,7 @@ func (compactInfo *CompactInfo) compact() {
 				"to compacted sst", rec))
 			continue
 		}
-		indexRec := index.IndexRec{
+		indexRec := IndexRec{
 			SSTRecOffset:  sstWriter.Offset,
 			SSTFileSeqNum: sstWriter.SeqNum,
 			TS:            rec.meta.ts,
@@ -237,7 +236,7 @@ func (compactInfo *CompactInfo) compact() {
 			sstWriter, _ = pInfo.NewSSTWriter() //all new sst will be in next level
 			bytesWritten = 0
 		}
-		keyHash, _ := GetHash(rec.key)
+		keyHash := Hash(rec.key)
 		compactInfo.idx.Set(keyHash, indexRec)
 	}
 	seqNum, err := sstWriter.FlushAndClose()
@@ -289,17 +288,11 @@ func (pInfo *PartitionInfo) updatePartition() { //TODO - test cases
 	pInfo.levelLock.Unlock()
 
 	//update active index with new index data (new ssts)
-	iterator := compactInfo.idx.NewIterator()
-	for iterator.Next() {
-		next := iterator.Value()
-		tmpKeyHash := next.Key()
-		tmpIndexRec := next.Value()
-
-		indexVal := pInfo.index.Get(tmpKeyHash)
-		if indexVal == nil {
+	for tmpKeyHash, tmpIndexRec := range compactInfo.idx.index {
+		idxRec, ok := pInfo.index.Get(tmpKeyHash)
+		if !ok {
 			pInfo.index.Set(tmpKeyHash, tmpIndexRec)
 		} else {
-			idxRec := indexVal.Value()
 			if idxRec.TS > tmpIndexRec.TS { //if there is a latest write
 				continue
 			}
@@ -609,7 +602,7 @@ func initCompactInfo(level int, partId int) *CompactInfo {
 		botLevelSST:   make([]SSTReader, 0, 8),
 		topLevelSST:   make([]SSTReader, 0, 8),
 		newSSTReaders: make([]SSTReader, 0, 100),
-		idx:           index.NewIndex(),
+		idx:           NewIndex(),
 		heap:          make([]*HeapEle, 0, 10000),
 	}
 }
