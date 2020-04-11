@@ -213,7 +213,7 @@ func (list *SkipList) NewIterator() *Iterator {
 }
 
 func (itr *Iterator) Next() bool {
-	return itr.node!=nil
+	return itr.node != nil
 }
 
 func (itr *Iterator) Value() *Element {

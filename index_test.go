@@ -66,7 +66,7 @@ func TestIndexSetGet(t *testing.T) {
 	}
 
 	for key, rec := range indexRecs {
-		get,_ := index.Get(Hash([]byte(key)))
+		get, _ := index.Get(Hash([]byte(key)))
 		require.True(t, checkEqualIndexRec(get, rec), "get result should be same as insert rec")
 	}
 }

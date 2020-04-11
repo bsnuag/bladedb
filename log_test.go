@@ -164,7 +164,7 @@ func TestLogWrite_RecoverRead(t *testing.T) {
 			require.True(t, (pInfo.memTable.Size() == int64(writesN/2)) || pInfo.memTable.Size() == int64(writesN))
 			itr := oldMemTable.Recs().NewIterator()
 			for itr.Next() {
-				next:=itr.Value()
+				next := itr.Value()
 				oldKey := []byte(next.Key())
 				oldMemRec := next.Value().(*memstore.MemRec)
 				activeMemRec, _ := pInfo.memTable.Find(oldKey)

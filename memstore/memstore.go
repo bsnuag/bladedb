@@ -41,16 +41,16 @@ func (memTable *MemTable) Find(key []byte) (value *MemRec, err error) {
 func (memTable *MemTable) FindKeyString(key string) (value *MemRec, err error) {
 	return memTable.Find([]byte(key))
 }
-func (memTable *MemTable) RefreshMemTable() (*sklist.SkipList) {
+func (memTable *MemTable) RefreshMemTable() *sklist.SkipList {
 	oldList := memTable.list
 	memTable.list = sklist.New()
 	return oldList
 }
 
-func (memTable *MemTable) Recs() (*sklist.SkipList) {
+func (memTable *MemTable) Recs() *sklist.SkipList {
 	return memTable.list
 }
 
-func (memTable *MemTable) Size() (int64) {
+func (memTable *MemTable) Size() int64 {
 	return int64(memTable.list.Length)
 }
