@@ -21,7 +21,7 @@ func TestIndexSet(t *testing.T) {
 		indexRec := IndexRec{
 			SSTRecOffset:  uint32(i),
 			SSTFileSeqNum: uint32(i),
-			TS:            uint64(time.Now().UnixNano()/1000),
+			TS:            uint64(time.Now().UnixNano() / 1000),
 		}
 		indexRecs[key] = indexRec
 		index.Set(key, indexRec)
@@ -41,7 +41,7 @@ func TestIndex_All(t *testing.T) {
 	indexRec := IndexRec{
 		SSTRecOffset:  0,
 		SSTFileSeqNum: 0,
-		TS:            uint64(time.Now().UnixNano()/1000),
+		TS:            uint64(time.Now().UnixNano() / 1000),
 	}
 	key := "1"
 
@@ -80,7 +80,7 @@ func TestIndexSet_Parallel_SameKey(t *testing.T) {
 			indexRec := IndexRec{
 				SSTRecOffset:  uint32(k),
 				SSTFileSeqNum: uint32(k),
-				TS:            uint64(time.Now().UnixNano()/1000),
+				TS:            uint64(time.Now().UnixNano() / 1000),
 			}
 			index.Set("1", indexRec)
 			latestTime = maxFinder(latestTime, indexRec.TS)

@@ -48,11 +48,11 @@ func TestDBWrite_With_Reload_MemFlush(t *testing.T) {
 	DefaultConstants.noOfPartitions = 8
 	DefaultConstants.memFlushWorker = 8 //override
 
-	wg:=sync.WaitGroup{}
+	wg := sync.WaitGroup{}
 	Open()
 	wg.Add(5000)
 	for i := 0; i < 5000; i++ {
-		go func(j int) {// goroutines are used to test if parallel write to log encoder buffer is working properly
+		go func(j int) { // goroutines are used to test if parallel write to log encoder buffer is working properly
 			Put([]byte(fmt.Sprintf("Key:%d", j)), []byte(fmt.Sprintf("Value:%d", j)))
 			wg.Done()
 		}(i)

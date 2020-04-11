@@ -6,11 +6,11 @@ type Constants struct {
 	writeReq  byte
 	deleteReq byte
 
-	logFileMaxLen   uint32
-	keyMaxLen       uint32
-	valueMaxLen     uint32
-	fileDelete      byte
-	fileCreate      byte
+	logFileMaxLen uint32
+	keyMaxLen     uint32
+	valueMaxLen   uint32
+	fileDelete    byte
+	fileCreate    byte
 
 	logFileType byte
 	sstFileType byte

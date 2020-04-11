@@ -37,7 +37,7 @@ type ManifestRec struct {
 
 var manifestFile *ManifestFile = nil
 
-func initManifest() (error) {
+func initManifest() error {
 	file, err := os.OpenFile(ManifestFileName, os.O_CREATE|os.O_RDWR|os.O_APPEND, os.ModePerm)
 	if err != nil {
 		return errors.Wrapf(err, "Error while opening or creating manifest file: %s", ManifestFileName)
@@ -53,7 +53,7 @@ func initManifest() (error) {
 	return nil
 }
 
-func closeManifest() (error) {
+func closeManifest() error {
 	if manifestFile == nil || manifestFile.file == nil {
 		manifestFile = nil
 		return nil

@@ -60,24 +60,24 @@ func TestMemFlushWriteSSTAndIndex_Overlap_Writes(t *testing.T) {
 	time.Sleep(5 * time.Second) //for worker to pickup task before calling stop
 	stopMemFlushWorker()
 
-	ts_3_count, ts_2_count, ts_1_count, others_count := 0, 0, 0, 0
+	ts3Count, ts2Count, ts1Count, othersTsCount := 0, 0, 0, 0
 	for _, value := range partitionInfoMap[partitionId].index.index {
 		if value.TS == 3 {
-			ts_3_count++
+			ts3Count++
 		} else if value.TS == 1 {
-			ts_1_count++
+			ts1Count++
 		} else if value.TS == 2 {
-			ts_2_count++
+			ts2Count++
 		} else {
-			others_count++
+			othersTsCount++
 		}
 	}
 
 	//validate index timestamps
-	require.True(t, ts_3_count == 500000)
-	require.True(t, ts_1_count == 400000)
-	require.True(t, ts_2_count == 0)
-	require.True(t, others_count == 0)
+	require.True(t, ts3Count == 500000)
+	require.True(t, ts1Count == 400000)
+	require.True(t, ts2Count == 0)
+	require.True(t, othersTsCount == 0)
 
 	//validate index rec count
 	require.True(t, partitionInfoMap[partitionId].index.Size() == 900000)
@@ -131,7 +131,7 @@ func TestMemFlushWriteSSTAndIndex_Overlap_Writes_Deletes(t *testing.T) {
 
 	//validate index rec count -
 	// memflush doesn't have effect on index for delete requests (gets removed while serving actual request)
-	require.True(t, partitionInfoMap[partitionId].index.Size()== 100000)
+	require.True(t, partitionInfoMap[partitionId].index.Size() == 100000)
 
 	//validate inactive logs rec count
 	require.True(t, len(partitionInfoMap[partitionId].inactiveLogDetails) == 0)

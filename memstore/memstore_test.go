@@ -9,45 +9,45 @@ import (
 
 func TestNewMemStoreCreate(t *testing.T) {
 	memStore, err := NewMemStore()
-	if memStore==nil || err!=nil {
+	if memStore == nil || err != nil {
 		panic("Error while creating new memstore")
 	}
 }
 
 func TestMemStoreInsert(t *testing.T) {
 	memStore, err := NewMemStore()
-	if memStore==nil || err!=nil {
+	if memStore == nil || err != nil {
 		panic("Error while creating new memstore")
 		return
 	}
-	N:=1000000
-	for i:=0;i<N;i++{
-		key := []byte(fmt.Sprintf("key-%d",i))
-		value := []byte(fmt.Sprintf("value-%d",i))
-		ts := uint64(time.Now().UnixNano()/1000)
+	N := 1000000
+	for i := 0; i < N; i++ {
+		key := []byte(fmt.Sprintf("key-%d", i))
+		value := []byte(fmt.Sprintf("value-%d", i))
+		ts := uint64(time.Now().UnixNano() / 1000)
 		memStore.Insert(key, value, ts, 0)
 	}
-	assert.True(t, memStore.list.Length==N, "Size should be 1000000")
+	assert.True(t, memStore.list.Length == N, "Size should be 1000000")
 }
 
 func TestMemStoreFind(t *testing.T) {
 	memStore, err := NewMemStore()
-	if memStore==nil || err!=nil {
+	if memStore == nil || err != nil {
 		panic("Error while creating new memstore")
 	}
 	//insert
-	N:=100
-	for i:=0;i<N;i++{
-		key := []byte(fmt.Sprintf("key-%d",i))
-		value := []byte(fmt.Sprintf("value-%d",i))
-		ts := uint64(time.Now().UnixNano()/1000)
+	N := 100
+	for i := 0; i < N; i++ {
+		key := []byte(fmt.Sprintf("key-%d", i))
+		value := []byte(fmt.Sprintf("value-%d", i))
+		ts := uint64(time.Now().UnixNano() / 1000)
 		memStore.Insert(key, value, ts, 0)
 	}
-	findCount:=0
-	for i:=0;i<N;i++{
-		keyString:=fmt.Sprintf("key-%d",i)
+	findCount := 0
+	for i := 0; i < N; i++ {
+		keyString := fmt.Sprintf("key-%d", i)
 		key := []byte(keyString)
-		_, err :=memStore.Find(key)
+		_, err := memStore.Find(key)
 		if err == nil {
 			findCount++
 			//fmt.Println(value)
@@ -55,7 +55,7 @@ func TestMemStoreFind(t *testing.T) {
 			//fmt.Println(fmt.Sprintf("couldn't find key: %s", keyString))
 		}
 	}
-	assert.True(t, memStore.list.Length==findCount, "Size should be 100")
+	assert.True(t, memStore.list.Length == findCount, "Size should be 100")
 }
 
 func BenchmarkMemStoreInsert(b *testing.B) {
@@ -63,7 +63,7 @@ func BenchmarkMemStoreInsert(b *testing.B) {
 	for i := 0; i < b.N; i++ {
 		key := []byte(fmt.Sprintf("key%d", i))
 		value := []byte(fmt.Sprintf("value-%d", i))
-		ts := uint64(time.Now().UnixNano()/1000)
+		ts := uint64(time.Now().UnixNano() / 1000)
 		memTable.Insert(key, value, ts, 0)
 	}
 }

@@ -45,7 +45,7 @@ func (record LogRecord) Value() []byte {
 	return record.value
 }
 
-func (record LogRecord) Ts() (uint64) {
+func (record LogRecord) Ts() uint64 {
 	return record.ts
 }
 

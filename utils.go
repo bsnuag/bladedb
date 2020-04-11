@@ -9,7 +9,7 @@ import (
 	"time"
 )
 
-func Hash(input []byte) ([32]byte) { //thread safe ?
+func Hash(input []byte) [32]byte { //thread safe ?
 	return sha256.Sum256(input)
 }
 
