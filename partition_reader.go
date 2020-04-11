@@ -44,21 +44,24 @@ func Get(key []byte) ([]byte, error) {
 		if err != nil {
 			return nil, errors.Wrapf(err, "error while reading sst record for indexRec: %v", indexRec)
 		}
-		return stableRec.val, nil
+		return stableRec.value, nil
 	}
 	return nil, nil
 }
 
-func (pInfo *PartitionInfo) getFromSST(sNum uint32, offset uint32) (*SSTRec, error) {
+func (pInfo *PartitionInfo) getFromSST(sNum uint32, offset uint32) (SSTRec, error) {
 	pInfo.levelLock.RLock()
 	defer pInfo.levelLock.RUnlock()
 
-	var sstReader SSTReader = SSTReader{}
-	if _, ok := pInfo.sstReaderMap[sNum]; ok {
-		sstReader = pInfo.sstReaderMap[sNum]
-	} else {
-		return nil, errors.New(fmt.Sprintf("Could not find sstReader for seqNum %d in %d partition",
+	sstReader, ok := pInfo.sstReaderMap[sNum]
+	if !ok {
+		return SSTRec{}, errors.New(fmt.Sprintf("Could not find sstReader for seqNum %d in %d partition",
 			sNum, pInfo.partitionId))
 	}
-	return sstReader.ReadRec(int64(offset))
+	n, sstRec := sstReader.ReadRec(offset)
+	if n == 0 {
+		return SSTRec{}, errors.New(fmt.Sprintf("Could not find data for offset %d in seqNum %d in %d partition",
+			offset, sNum, pInfo.partitionId))
+	}
+	return sstRec, nil
 }

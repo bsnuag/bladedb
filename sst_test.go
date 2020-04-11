@@ -25,11 +25,11 @@ func TestSSTReadRec(t *testing.T) {
 	defer os.Remove(sReader2.file.Name())
 	defer os.RemoveAll(dir)
 
-	sstRec1, err := sReader1.ReadRec(0)
-	require.NotNil(t, sstRec1, "Expected valid record from sst file")
+	n1, _ := sReader1.ReadRec(0)
+	require.True(t, n1 > 0, "Expected valid record from sst file")
 
-	sstRec2, err := sReader1.ReadRec(math.MaxInt64)
-	require.Nil(t, sstRec2, "Expected nil response for offset greater than limit")
+	n2, _ := sReader1.ReadRec(math.MaxUint32)
+	require.True(t, n2 == 0, "Expected nil response for offset greater than limit")
 }
 
 func TestLoadSSTRec_Mix_Delele_And_Write(t *testing.T) {
@@ -54,23 +54,23 @@ func TestLoadSSTRec_Mix_Delele_And_Write(t *testing.T) {
 
 	expectedIndexKeys := make(map[string]interface{}, 1)
 	expectedIndexKeys["0Key_"] = struct{}{}
-	expectedIndexKeys["9Key_"] = struct{}{}
+	expectedIndexKeys["1Key_"] = struct{}{}
 	expectedIndexKeys["2Key_"] = struct{}{}
 	expectedIndexKeys["3Key_"] = struct{}{}
-	expectedIndexKeys["1Key_"] = struct{}{}
-	expectedIndexKeys["8Key_"] = struct{}{}
-	expectedIndexKeys["6Key_"] = struct{}{}
-	expectedIndexKeys["5Key_"] = struct{}{}
-	expectedIndexKeys["7Key_"] = struct{}{}
 	expectedIndexKeys["4Key_"] = struct{}{}
-
+	expectedIndexKeys["5Key_"] = struct{}{}
+	expectedIndexKeys["6Key_"] = struct{}{}
+	expectedIndexKeys["7Key_"] = struct{}{}
+	expectedIndexKeys["8Key_"] = struct{}{}
+	expectedIndexKeys["9Key_"] = struct{}{}
+	//fmt.Println(len(index.index))
 	require.True(t, index.Size() == len(expectedIndexKeys),
 		fmt.Sprintf("Expected %d numbers of keys in index", index.Size()))
 
 	for key, _ := range expectedIndexKeys {
 		hash := Hash([]byte(key))
 		_, ok := index.Get(hash)
-		require.True(t, ok, fmt.Sprintf("Expected key %s (hash: %s) is missing from index", key, hash))
+		require.True(t, ok, fmt.Sprintf("Expected key %s (hash: %o) is missing from index", key, hash))
 	}
 }
 

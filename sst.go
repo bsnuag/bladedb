@@ -4,24 +4,20 @@ import (
 	"bufio"
 	"encoding/binary"
 	"fmt"
-	"github.com/niubaoshu/gotiny"
 	"github.com/pkg/errors"
 	"os"
+	"syscall"
 )
 
+const sstEncoderBufMetaLen = 1<<8 - 1 //1 byte(recType) + 16 bytes(ts)
+var sstBufLen = sstEncoderBufMetaLen + DefaultConstants.keyMaxLen + DefaultConstants.keyMaxLen
+
 type SSTRec struct {
-	key  []byte
-	val  []byte
-	meta SSTRecMeta
+	recType byte
+	key     []byte
+	value   []byte
+	ts      uint64
 }
-
-type SSTRecMeta struct {
-	recType  byte //write or tombstone
-	ts       uint64
-	checksum int64 //TODO - impl checksum
-}
-
-var SST_HEADER_LEN uint32 = 5
 
 var SSTDir = "data/dbstore"
 var SSTBaseFileName = "/sst_%d_%d.sst"
@@ -62,23 +58,29 @@ func NewSSTWriter(partitionId int, seqNum uint32) (*SSTWriter, error) {
 	return sstWriter, nil
 }
 
-func (writer *SSTWriter) Write(key []byte, value []byte, ts uint64, recType byte) (byteWritten int16, err error) {
-	sstMeta := SSTRecMeta{recType, ts, 0}
+func (rec SSTRec) SSTEncoder(buf []byte) uint32 {
+	binary.LittleEndian.PutUint16(buf[0:2], uint16(len(rec.key)))
+	binary.LittleEndian.PutUint16(buf[2:4], uint16(len(rec.value)))
+	binary.LittleEndian.PutUint16(buf[4:6], uint16(8))
 
-	sstRec := gotiny.Marshal(&SSTRec{key, value, sstMeta})
-	var headerBuf = make([]byte, SST_HEADER_LEN)
+	offset := 6
+	buf[offset] = rec.recType
+	offset += 1
+	copy(buf[offset:], rec.key)
+	offset += len(rec.key)
+	copy(buf[offset:], rec.value)
+	offset += len(rec.value)
+	offset += binary.PutUvarint(buf[offset:], rec.ts)
+	return uint32(offset)
+}
 
-	totalWriteLen := SST_HEADER_LEN + uint32(len(sstRec))
-	binary.LittleEndian.PutUint32(headerBuf[0:SST_HEADER_LEN], uint32(len(sstRec)))
-
-	if _, err := writer.writer.Write(headerBuf[:]); err != nil {
+func (writer *SSTWriter) Write(data []byte) (uint32, error) {
+	n, err := writer.writer.Write(data[:])
+	if err != nil {
 		return 0, err
 	}
-	if _, err := writer.writer.Write(sstRec); err != nil {
-		return 0, err
-	}
-	writer.Offset = uint32(totalWriteLen) + writer.Offset
-	return int16(totalWriteLen), nil
+	writer.Offset = uint32(n) + writer.Offset
+	return uint32(n), nil
 }
 
 func (writer *SSTWriter) FlushAndClose() (uint32, error) {
@@ -99,10 +101,10 @@ func (writer *SSTWriter) FlushAndClose() (uint32, error) {
 }
 
 type SSTReader struct {
+	data        []byte
 	file        *os.File
 	SeqNm       uint32
 	partitionId int
-
 	//meta info
 	startKey     []byte
 	endKey       []byte
@@ -117,7 +119,14 @@ func NewSSTReader(seqNum uint32, partitionId int) (SSTReader, error) {
 	if err != nil {
 		return SSTReader{}, errors.Wrapf(err, "Error while opening sst file: %s", fileName)
 	}
+	size := int(fileSize(fileName))
+	data, err := syscall.Mmap(int(file.Fd()), 0, size, syscall.PROT_READ, syscall.MAP_PRIVATE)
+	if err != nil {
+		return SSTReader{}, errors.Wrapf(err, "Error while mmaping sst file: %s", fileName)
+	}
+
 	sstReader := SSTReader{
+		data:         data,
 		file:         file,
 		SeqNm:        seqNum,
 		partitionId:  partitionId,
@@ -129,68 +138,72 @@ func NewSSTReader(seqNum uint32, partitionId int) (SSTReader, error) {
 	return sstReader, nil
 }
 
-func (reader SSTReader) ReadRec(offset int64) (*SSTRec, error) {
-	var lenRecBuf = make([]byte, SST_HEADER_LEN)
-	reader.file.ReadAt(lenRecBuf[0:SST_HEADER_LEN], offset)
-
-	var sstRecLength = binary.LittleEndian.Uint32(lenRecBuf[:])
-	if sstRecLength == 0 {
-		return nil, nil
+func SSTDecoder(offset uint32, data []byte) (size uint32, sstRec SSTRec) {
+	if offset >= uint32(len(data)) {
+		return 0, SSTRec{}
 	}
-	var sstRecBuf = make([]byte, sstRecLength)
-	reader.file.ReadAt(sstRecBuf[0:sstRecLength], offset+int64(SST_HEADER_LEN))
+	size = offset
 
-	var sstRec = &SSTRec{}
-	gotiny.Unmarshal(sstRecBuf[:], sstRec)
+	keyLen := binary.LittleEndian.Uint16(data[offset : offset+2])
+	offset += 2
 
-	return sstRec, nil
+	valueLen := binary.LittleEndian.Uint16(data[offset : offset+2])
+	offset += 2
+
+	tsLen := binary.LittleEndian.Uint16(data[offset : offset+2])
+	offset += 2
+
+	sstRec.recType = data[offset]
+	offset += 1
+
+	sstRec.key = data[offset : offset+uint32(keyLen)]
+	offset += uint32(keyLen)
+
+	sstRec.value = data[offset : offset+uint32(valueLen)]
+	offset += uint32(valueLen)
+
+	sstRec.ts, _ = binary.Uvarint(data[offset : offset+uint32(tsLen)])
+	offset += uint32(tsLen)
+
+	return offset - size, sstRec
+}
+
+//reading file shall go away with implementation of mmap files
+func (reader SSTReader) ReadRec(offset uint32) (uint32, SSTRec) {
+	return SSTDecoder(offset, reader.data)
 }
 
 //bootstrapping activity
 //index is thread-safe
 //this is invoked sequentially
-func (reader *SSTReader) loadSSTRec(idx *Index) (int64, error) {
+func (reader *SSTReader) loadSSTRec(idx *Index) (uint32, error) {
 	fmt.Println(fmt.Sprintf("loading sst seqno: %d, partitionId: %d", reader.SeqNm, reader.partitionId))
-	var recsRead int64 = 0
+	var recsRead uint32 = 0
 	var readOffset uint32 = 0
-	info, err := reader.file.Stat()
-	if err != nil {
-		panic(err)
-		return recsRead, err
-	}
-
-	for readOffset < uint32(info.Size()) {
-		sstRecLength, sstRec := reader.readNext()
-
-		if sstRec.meta.recType == DefaultConstants.writeReq {
+	iterator := reader.NewIterator()
+	for {
+		readOffset = iterator.offset
+		sstRec, ok := iterator.Next()
+		if !ok {
+			break
+		}
+		keyHash := Hash(sstRec.key)
+		idRec, ok := idx.Get(keyHash)
+		if sstRec.recType == DefaultConstants.writeReq {
 			indexRec := IndexRec{
 				SSTRecOffset:  readOffset,
 				SSTFileSeqNum: reader.SeqNm,
-				TS:            sstRec.meta.ts,
+				TS:            sstRec.ts,
 			}
-
-			//keyString := string(sstRec.key)
-			keyHash := Hash(sstRec.key)
-
-			idRec, ok := idx.Get(keyHash)
-			if !ok {
+			if !ok || idRec.TS < sstRec.ts {
 				idx.Set(keyHash, indexRec)
-			} else {
-				if idRec.TS < sstRec.meta.ts {
-					idx.Set(keyHash, idRec)
-				}
 			}
-
 			reader.noOfWriteReq++
 		} else {
 			reader.noOfDelReq++
-			keyHash := Hash(sstRec.key)
-			idRec, ok := idx.Get(keyHash)
 			//remove if delete timestamp is > any write timestamp
-			if ok {
-				if idRec.TS < sstRec.meta.ts {
-					idx.Remove(keyHash)
-				}
+			if ok && idRec.TS < sstRec.ts {
+				idx.Remove(keyHash)
 			}
 		}
 
@@ -198,7 +211,6 @@ func (reader *SSTReader) loadSSTRec(idx *Index) (int64, error) {
 			reader.startKey = sstRec.key
 		}
 		reader.endKey = sstRec.key
-		readOffset += (SST_HEADER_LEN) + (sstRecLength)
 		recsRead++
 	}
 	fmt.Println(fmt.Sprintf("loading complete "+
@@ -209,28 +221,38 @@ func (reader *SSTReader) loadSSTRec(idx *Index) (int64, error) {
 	return recsRead, nil
 }
 
-func (reader SSTReader) readNext() (uint32, *SSTRec) {
-
-	var sstHeaderBuf = make([]byte, SST_HEADER_LEN)
-	reader.file.Read(sstHeaderBuf[0:SST_HEADER_LEN])
-	var sstRecLength = binary.LittleEndian.Uint32(sstHeaderBuf[:])
-	if sstRecLength == 0 {
-		return 0, nil
-	}
-	var sstRecBuf = make([]byte, sstRecLength)
-	reader.file.Read(sstRecBuf[0:sstRecLength])
-
-	var sstRec = &SSTRec{}
-	gotiny.Unmarshal(sstRecBuf[:], sstRec)
-
-	return sstRecLength, sstRec
-}
-
 func (reader SSTReader) Close() error {
+	err := syscall.Munmap(reader.data)
+	if err != nil {
+		panic(errors.Wrapf(err, "error while un-mapping sst file seqNum: %d partitionId: %d", reader.SeqNm, reader.partitionId))
+	}
 	return reader.file.Close()
 }
 
 func deleteSST(partitionId int, seqNum uint32) error {
 	fileName := SSTDir + fmt.Sprintf(SSTBaseFileName, partitionId, seqNum)
 	return os.Remove(fileName)
+}
+
+type SSTIterator interface {
+	Next() (sstRec SSTRec, ok bool)
+}
+
+func (iterator *IterableSST) Next() (sstRec SSTRec, ok bool) {
+	size, rec := SSTDecoder(iterator.offset, iterator.data)
+	if size == 0 {
+		return rec, false
+	}
+	iterator.offset += size
+	return rec, true
+}
+
+type IterableSST struct {
+	mappedFileName string
+	data           []byte
+	offset         uint32
+}
+
+func (reader SSTReader) NewIterator() *IterableSST {
+	return &IterableSST{reader.file.Name(), reader.data, 0}
 }

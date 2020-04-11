@@ -61,7 +61,7 @@ func memFlushWorker(flushWorkerName string) {
 		//writeManifest log-delete and sst-create details
 		writeManifest([]ManifestRec{mf1, mf2})
 
-		newInactiveLogs := make([]*InactiveLogDetails, 0)
+		newInactiveLogs := make([]*InactiveLogDetails, 0, len(pInfo.inactiveLogDetails))
 		//remove flushed log details
 		pInfo.readLock.Lock()
 		for _, ele := range pInfo.inactiveLogDetails {
@@ -90,26 +90,29 @@ func (pInfo *PartitionInfo) writeSSTAndIndex(memRecs *sklist.SkipList) (seqNum u
 	if err != nil {
 		panic(err)
 	}
+	var sstEncoderBuf = make([]byte, sstBufLen)
 	//flush memRecs to SST and index
 	iterator := memRecs.NewIterator()
 	for iterator.Next() {
 		next := iterator.Value()
 		key := []byte(next.Key())
 		value := next.Value().(*memstore.MemRec)
-		indexRec := IndexRec{
-			SSTRecOffset:  sstWriter.Offset,
-			SSTFileSeqNum: sstWriter.SeqNum,
-			TS:            value.TS,
-		}
-		_, sstErr := sstWriter.Write(key, value.Value, value.TS, value.RecType)
+		sstRec := SSTRec{value.RecType, key, value.Value, value.TS}
+		n := sstRec.SSTEncoder(sstEncoderBuf[:])
+		_, sstErr := sstWriter.Write(sstEncoderBuf[:n])
 		if sstErr != nil {
 			panic(sstErr)
 		}
 
 		//if rec type is writeReq then load to index, delete request need not load to index
 		if value.RecType == DefaultConstants.writeReq {
+			indexRec := IndexRec{
+				SSTRecOffset:  sstWriter.Offset,
+				SSTFileSeqNum: sstWriter.SeqNum,
+				TS:            value.TS,
+			}
 			keyHash := Hash(key[:])
-			pInfo.index.Set(keyHash,indexRec)
+			pInfo.index.Set(keyHash, indexRec)
 			noOfWriteReq++
 		} else {
 			noOfDelReq++

@@ -9,8 +9,8 @@ import (
 )
 
 type HeapEle struct {
-	reader SSTReader
-	rec    *SSTRec
+	iterator *IterableSST
+	rec      SSTRec
 }
 
 type heapArr []*HeapEle
@@ -18,7 +18,7 @@ type heapArr []*HeapEle
 func (h heapArr) Len() int { return len(h) }
 func (h heapArr) Less(i, j int) bool {
 	if string(h[i].rec.key) == string(h[j].rec.key) { //rec with same key having max ts will be at top of heap
-		return h[i].rec.meta.ts > h[j].rec.meta.ts
+		return h[i].rec.ts > h[j].rec.ts
 	}
 	return string(h[i].rec.key) < string(h[j].rec.key)
 }
@@ -47,23 +47,29 @@ func (compactInfo *CompactInfo) buildHeap() {
 	compactInfo.sortInputSST()
 	//initialise heap with recs from all ssts
 	for _, sstReader := range compactInfo.botLevelSST {
-		_, sstRec := sstReader.readNext()
-		if sstRec == nil { //shouldn't happen....each sst will have data
+		iterator := sstReader.NewIterator()
+		sstRec, ok := iterator.Next()
+		if !ok { //shouldn't happen....each sst will have data
 			fmt.Println(fmt.Sprintf("Found empty rec in sst file: %s", sstReader.file.Name()))
 			continue
 		}
 		ele := &HeapEle{
-			reader: sstReader,
-			rec:    sstRec,
+			iterator: iterator,
+			rec:      sstRec,
 		}
 		compactInfo.heap.Push(ele)
 	}
 
 	for _, sstReader := range compactInfo.topLevelSST {
-		_, sstRec := sstReader.readNext()
+		iterator := sstReader.NewIterator()
+		sstRec, ok := iterator.Next()
+		if !ok { //shouldn't happen....each sst will have data
+			fmt.Println(fmt.Sprintf("Found empty rec in sst file: %s", sstReader.file.Name()))
+			continue
+		}
 		ele := &HeapEle{
-			reader: sstReader,
-			rec:    sstRec,
+			iterator: iterator,
+			rec:      sstRec,
 		}
 		compactInfo.heap.Push(ele)
 	}
@@ -189,10 +195,11 @@ func (compactInfo *CompactInfo) compact() {
 	if err != nil {
 		panic(err)
 	}
+	var sstEncoderBuf = make([]byte, uint32(DefaultConstants.noOfPartitions)*logEncoderPartLen)
 	totalCompactIndexWrite := 0
 	for compactInfo.heap.Len() > 0 {
-		rec := compactInfo.nextRec()
-		if compactInfo.nextLevel == DefaultConstants.maxLevel && rec.meta.recType == DefaultConstants.deleteReq {
+		_, rec := compactInfo.nextRec()
+		if compactInfo.nextLevel == DefaultConstants.maxLevel && rec.recType == DefaultConstants.deleteReq {
 			fmt.Println(fmt.Sprintf("Tombstone rec: %v, with target level=maxlevel, removing it from adding it "+
 				"to compacted sst", rec))
 			continue
@@ -200,19 +207,20 @@ func (compactInfo *CompactInfo) compact() {
 		indexRec := IndexRec{
 			SSTRecOffset:  sstWriter.Offset,
 			SSTFileSeqNum: sstWriter.SeqNum,
-			TS:            rec.meta.ts,
+			TS:            rec.ts,
 		}
 		totalCompactIndexWrite++
-		n, err := sstWriter.Write(rec.key, rec.val, rec.meta.ts, rec.meta.recType)
+		n := rec.SSTEncoder(sstEncoderBuf)
+		n, err := sstWriter.Write(sstEncoderBuf[:n])
 		if err != nil {
 			fmt.Println(fmt.Sprintf("Error while writing SST during compaction, sstFile: %s, err: %v",
 				sstWriter.file.Name(), err)) //TODO - what to do here ? abort compaction ..?
 		}
-		bytesWritten += uint32(n)
+		bytesWritten += n
 
-		if rec.meta.recType == DefaultConstants.deleteReq {
+		if rec.recType == DefaultConstants.deleteReq {
 			sstWriter.noOfDelReq++
-		} else if rec.meta.recType == DefaultConstants.writeReq {
+		} else if rec.recType == DefaultConstants.writeReq {
 			sstWriter.noOfWriteReq++
 		}
 		if sstWriter.startKey == nil {
@@ -269,9 +277,9 @@ func (compactInfo *CompactInfo) compact() {
 //3. remove compacted sst's from active sstReaderMap
 //4. write manifest
 func (pInfo *PartitionInfo) updatePartition() { //TODO - test cases
-	manifestRecs := make([]ManifestRec, 0, 8)
 	pInfo.levelLock.Lock()
 	compactInfo := pInfo.activeCompaction
+	manifestRecs := make([]ManifestRec, 0, len(compactInfo.newSSTReaders)+len(compactInfo.botLevelSST)+len(compactInfo.topLevelSST))
 	//update active sstReaderMap with newly created ssts
 	for _, newReader := range compactInfo.newSSTReaders {
 		mf1 := ManifestRec{
@@ -300,7 +308,7 @@ func (pInfo *PartitionInfo) updatePartition() { //TODO - test cases
 		}
 	}
 
-	deleteReaders := make([]SSTReader, 0, 8)
+	deleteReaders := make([]SSTReader, 0, len(compactInfo.botLevelSST)+len(compactInfo.topLevelSST))
 	//remove compacted sst's from active sstReaderMap
 	pInfo.levelLock.Lock()
 	thisLevelInfo := pInfo.levelsInfo[compactInfo.thisLevel]
@@ -346,9 +354,9 @@ func (pInfo *PartitionInfo) updatePartition() { //TODO - test cases
 	}
 }
 
-func (compactInfo *CompactInfo) nextRec() *SSTRec {
+func (compactInfo *CompactInfo) nextRec() (bool, SSTRec) {
 	if compactInfo.heap.Len() <= 0 {
-		return nil
+		return false, SSTRec{}
 	}
 
 	minPop := heap.Pop(&compactInfo.heap).(*HeapEle)
@@ -367,28 +375,27 @@ func (compactInfo *CompactInfo) nextRec() *SSTRec {
 		//}
 
 		if string(minPop.rec.key) == string(pop.rec.key) {
-			if pop.rec.meta.ts > minPop.rec.meta.ts { //TODO - THIS condition will always be true - check and remove it
+			if pop.rec.ts > minPop.rec.ts { //TODO - THIS condition will always be true - check and remove it
 				minPop = pop
 			}
 			compactInfo.pushNext(pop)
 		}
 	}
 
-	return minPop.rec
+	return true, minPop.rec
 }
 
 func (compactInfo *CompactInfo) pushNext(popEle *HeapEle) bool {
-	_, nextRec := popEle.reader.readNext()
+	nextRec, ok := popEle.iterator.Next()
 
-	if nextRec == nil { //TODO - We can later use this info to delete this file once compaction process is done + new sst is loaded to index
-		fmt.Println(fmt.Sprintf("reached end of file: %s, closing reader", popEle.reader.file.Name()))
-		popEle.reader.Close()
+	if !ok { //TODO - We can later use this info to delete this file once compaction process is done + new sst is loaded to index
+		fmt.Println(fmt.Sprintf("reached end of file: %s, closing reader", popEle.iterator.mappedFileName))
 		return false
 	}
 
 	ele := &HeapEle{
-		reader: popEle.reader,
-		rec:    nextRec,
+		iterator: popEle.iterator,
+		rec:      nextRec,
 	}
 	heap.Push(&compactInfo.heap, ele)
 	return true
@@ -511,7 +518,7 @@ func keyRange(sKey, eKey, final_sKey, final_eKey string) (string, string) {
 }
 
 func (pInfo *PartitionInfo) sortedSeqNums(sstSeqMap map[uint32]struct{}) []uint32 {
-	sortedKey := make([]uint32, 0, 8)
+	sortedKey := make([]uint32, 0, len(sstSeqMap))
 	for k := range sstSeqMap {
 		sortedKey = append(sortedKey, k)
 	}
@@ -535,7 +542,7 @@ func computeDeleteToWriteRatio(deleteCount uint64, writeCount uint64) int {
 }
 
 func (pInfo *PartitionInfo) overlappedSSTReaders(sstSeqNums map[uint32]struct{}, sKey string, eKey string) []SSTReader {
-	overlappedSST := make([]SSTReader, 0, 8)
+	overlappedSST := make([]SSTReader, 0, len(sstSeqNums))
 	for sstSeqNum := range sstSeqNums {
 		if overlap(sKey, eKey, string(pInfo.sstReaderMap[sstSeqNum].startKey), string(pInfo.sstReaderMap[sstSeqNum].endKey)) {
 			overlappedSST = append(overlappedSST, pInfo.sstReaderMap[sstSeqNum])

@@ -2,7 +2,6 @@ package bladedb
 
 import (
 	"bladedb/memstore"
-	"bufio"
 	"fmt"
 	"github.com/stretchr/testify/require"
 	"io/ioutil"
@@ -369,8 +368,9 @@ func TestBuildCompactionBaseLevelAs0(t *testing.T) {
 	actualKeyOrder := make([]string, 0, 100)
 	sstRecCount := 0
 	reader, _ := NewSSTReader(compactInfo.newSSTReaders[0].SeqNm, partitionId)
+	iterator := reader.NewIterator()
 	for {
-		if n, rec := reader.readNext(); n != 0 {
+		if rec, ok := iterator.Next(); ok {
 			actualKeyOrder = append(actualKeyOrder, string(rec.key))
 			sstRecCount++
 			continue
@@ -385,21 +385,9 @@ func TestBuildCompactionBaseLevelAs0(t *testing.T) {
 }
 
 func prepareInputSSTs(dir string, partitionId int) (SSTReader, SSTReader) {
-	//initiate sstFiles
-	sstFile1, _ := ioutil.TempFile(dir, fmt.Sprintf(SSTBaseFileName, partitionId, 0))
-	sstFile2, _ := ioutil.TempFile(dir, fmt.Sprintf(SSTBaseFileName, partitionId, 1))
-	sstWriter1 := &SSTWriter{
-		file:        sstFile1,
-		writer:      bufio.NewWriter(sstFile1),
-		partitionId: partitionId,
-		SeqNum:      0,
-	}
-	sstWriter2 := &SSTWriter{
-		file:        sstFile2,
-		writer:      bufio.NewWriter(sstFile2),
-		partitionId: partitionId,
-		SeqNum:      1,
-	}
+	SSTDir = dir
+	sstWriter1, _ := NewSSTWriter(partitionId, 0)
+	sstWriter2, _ := NewSSTWriter(partitionId, 1)
 	//Write data into mem and then flush it to sst
 	sKe1 := ""
 	eKey1 := ""
@@ -407,17 +395,18 @@ func prepareInputSSTs(dir string, partitionId int) (SSTReader, SSTReader) {
 	memTable, _ := memstore.NewMemStore()
 	for i := 0; i < 20; i++ {
 		time.Sleep(time.Nanosecond * 10)
-		key := fmt.Sprintf("%dKey_", i)
-		value := fmt.Sprintf("%dValue_", i)
+		key, value := fmt.Sprintf("%dKey_", i), fmt.Sprintf("%dValue_", i)
 		memTable.Insert([]byte(key), []byte(value), NanoTime(), DefaultConstants.writeReq)
 	}
-	//fmt.Println("SST-1 Data..")
+	var sstEncoderBuf = make([]byte, uint32(sstBufLen))
 	iterator := memTable.Recs().NewIterator()
 	for iterator.Next() {
 		next := iterator.Value()
-		key:=[]byte(next.Key())
+		key := []byte(next.Key())
 		mRec := next.Value().(*memstore.MemRec)
-		sstWriter1.Write(key, mRec.Value, mRec.TS, mRec.RecType)
+		sstRec := SSTRec{mRec.RecType, key, mRec.Value, mRec.TS}
+		n := sstRec.SSTEncoder(sstEncoderBuf[:])
+		sstWriter1.Write(sstEncoderBuf[:n])
 		writeCount1++
 		if sKe1 == "" {
 			sKe1 = string(key)
@@ -434,17 +423,17 @@ func prepareInputSSTs(dir string, partitionId int) (SSTReader, SSTReader) {
 	var deleteCount2 uint64 = 0
 	for i := 10; i < 25; i++ {
 		time.Sleep(time.Nanosecond * 10)
-		key := fmt.Sprintf("%dKey_", i)
-		value := fmt.Sprintf("%dValue_", i)
+		key, value := fmt.Sprintf("%dKey_", i), fmt.Sprintf("%dValue_", i)
 		memTable.Insert([]byte(key), []byte(value), NanoTime(), DefaultConstants.deleteReq)
 	}
-	//fmt.Println("\n\nSST-2 Data..")
 	iterator = memTable.Recs().NewIterator()
 	for iterator.Next() {
 		next := iterator.Value()
 		key := []byte(next.Key())
 		mRec := next.Value().(*memstore.MemRec)
-		sstWriter2.Write(key, mRec.Value, mRec.TS, mRec.RecType)
+		sstRec := SSTRec{mRec.RecType, key, mRec.Value, mRec.TS}
+		n := sstRec.SSTEncoder(sstEncoderBuf[:])
+		sstWriter2.Write(sstEncoderBuf[:n])
 		deleteCount2++
 		if sKey2 == "" {
 			sKey2 = string(key)
@@ -453,32 +442,20 @@ func prepareInputSSTs(dir string, partitionId int) (SSTReader, SSTReader) {
 		//fmt.Println(fmt.Sprintf("Key: %s, time: %d", string(mRec.Key), mRec.TS))
 		iterator.Next()
 	}
+	sstWriter1.FlushAndClose()
+	sstWriter2.FlushAndClose()
 
-	sstWriter1.writer.Flush()
-	sstWriter2.writer.Flush()
-	sstFile1.Sync()
-	sstFile2.Sync()
+	sReader1, _ := NewSSTReader(sstWriter1.SeqNum, sstWriter1.partitionId)
+	sReader1.startKey = []byte(sKe1)
+	sReader1.endKey = []byte(eKey1)
+	sReader1.noOfWriteReq = writeCount1
+	sReader1.noOfDelReq = 0
 
-	sstFile1.Seek(0, 0)
-	sstFile2.Seek(0, 0)
-	sReader1 := SSTReader{
-		file:         sstFile1,
-		SeqNm:        0,
-		partitionId:  partitionId,
-		startKey:     []byte(sKe1),
-		endKey:       []byte(eKey1),
-		noOfWriteReq: writeCount1,
-		noOfDelReq:   0,
-	}
-	sReader2 := SSTReader{
-		file:         sstFile2,
-		SeqNm:        1,
-		partitionId:  partitionId,
-		startKey:     []byte(sKey2),
-		endKey:       []byte(eKey2),
-		noOfWriteReq: 0,
-		noOfDelReq:   deleteCount2,
-	}
+	sReader2, _ := NewSSTReader(sstWriter2.SeqNum, sstWriter2.partitionId)
+	sReader2.startKey = []byte(sKey2)
+	sReader2.endKey = []byte(eKey2)
+	sReader2.noOfWriteReq = 0
+	sReader2.noOfDelReq = deleteCount2
 	return sReader1, sReader2
 }
 
