@@ -2,44 +2,42 @@ package main
 
 import (
 	"bladedb"
+	"bytes"
 	"fmt"
-	"runtime"
 	"sync"
 	"time"
 )
 
+var start = time.Now()
+
 func main() {
 
-	err := bladedb.PreparePartitionIdsMap()
+	err := bladedb.Open()
 	if err != nil {
 		panic(fmt.Sprintf("error in init() of dbstore"))
 	}
 
-	start := time.Now().UnixNano()
-
-	nWrite := 10
+	nWrite := 100000000 / 2
 	wg := sync.WaitGroup{}
 
 	wg.Add(nWrite)
 	writeRecs(nWrite, &wg)
 	wg.Wait()
 
-	wg.Add(4)
-	deleteRecs(4, &wg)
-	wg.Wait()
+	//wg.Add(4)
+	//deleteRecs(4, &wg)
+	//wg.Wait()
+	//
+	//wg.Add(nWrite)
+	//readRecs(nWrite, &wg)
+	//wg.Wait()
 
-	wg.Add(nWrite)
-	readRecs(nWrite, &wg)
-	wg.Wait()
-
-	fmt.Println("TotalTime Before flushing..(ns): ", (time.Now().UnixNano() - start))
+	fmt.Println("TotalTime Before flushing..(sec): ", time.Since(start).Seconds())
 	fmt.Println("All Write completed..Flushing db")
-	//bladedb.Drain()
 
 	bladedb.Flush()
-	//bladedb.MemFlushQueueWG.Wait()
-	bladedb.PrintPartitionStats()
-	fmt.Println("TotalTime After Flusing (ns): ", (time.Now().UnixNano() - start))
+	//	bladedb.PrintPartitionStats()
+	fmt.Println("TotalTime After Flusing (ns): ", time.Since(start).Seconds())
 
 	/*	fmt.Println("Starting up again...\n 1.Keys will be dumped to WAL and MEMTable from Unclosed WAL File \n 2. Keys will be loaded from SST to Index")
 		err1 := bladedb.PreparePartitionIdsMap()
@@ -52,43 +50,52 @@ func main() {
 	*/
 }
 
-
 type Temp struct {
-	key   string
-	value string
+	key   []byte
+	value []byte
 	wg    *sync.WaitGroup
 }
 
 func writeRecs(nWrite int, wg *sync.WaitGroup) {
-	tChan := make(chan *Temp, 100000)
-	for i := 0; i < runtime.NumCPU()*4; i++ {
+	tChan := make(chan *Temp, 50000000)
+	for i := 0; i < 32; i++ {
 		go doWrite(tChan)
 	}
-
+	start = time.Now()
+	localStart := time.Now()
 	for i := 0; i < nWrite; i++ {
-		j := i
-		//j := 101 + i
 		tChan <- &Temp{
-			key:   fmt.Sprintf("Key%d", j),
-			value: fmt.Sprintf("Value%d", j),
+			key:   bytes.Repeat([]byte(fmt.Sprintf("%d", i)), 22*1)[:11],
+			value: bytes.Repeat([]byte(fmt.Sprintf("%d", i)), 128*1)[:128],
 			wg:    wg,
 		}
+		if i%100000 == 0 {
+			fmt.Println(fmt.Sprintf("Write completed: %d, time took: %f, total time: %f", i,
+				time.Since(localStart).Seconds(), time.Since(start).Seconds()))
+			localStart = time.Now()
+		}
 	}
+	//for i := 0; i < nWrite; i++ {
+	//	j:=i
+	//	go func(k int) {
+	//		//bladedb.Put(bytes.Repeat([]byte(fmt.Sprintf("%d", k)), 128),
+	//		//	bytes.Repeat([]byte(fmt.Sprintf("%d", k)), 512))
+	//		bladedb.Put(bytes.Repeat([]byte("1"), 22*1),
+	//			bytes.Repeat([]byte("2"), 128*1))
+	//		wg.Done()
+	//	}(j)
+	//}
 	fmt.Println("Push Done....")
 }
 
 func doWrite(tempChan chan *Temp) {
 	for temp := range tempChan {
-		write(temp.key, temp.value)
+		bladedb.Put(temp.key, temp.value)
 		temp.wg.Done()
 	}
 }
 
-func write(key string, value string) {
-	bladedb.Put(key, []byte(value))
-}
-
-func deleteRecs(nDelete int, wg *sync.WaitGroup) {
+/*func deleteRecs(nDelete int, wg *sync.WaitGroup) {
 	tChan := make(chan *Temp, 100000)
 	for i := 0; i < runtime.NumCPU()*4; i++ {
 		go doWrite(tChan)
@@ -139,4 +146,4 @@ func doRead(tempChan chan *Temp) {
 		//}
 		temp.wg.Done()
 	}
-}
+}*/

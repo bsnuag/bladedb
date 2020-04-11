@@ -160,7 +160,7 @@ func TestLogWrite_RecoverRead(t *testing.T) {
 		for _, logDetails := range pInfo.inactiveLogDetails {
 			details, _ := pInfo.loadLogFile(logDetails.FileSeqNum)
 			require.NotNil(t, details.WriteOffset)
-			require.True(t, details.WriteOffset == fileSize(logDetails.FileName))
+			require.True(t, details.WriteOffset == uint32(fileSize(logDetails.FileName)))
 			require.True(t, (pInfo.memTable.Size() == int64(writesN/2)) || pInfo.memTable.Size() == int64(writesN))
 			itr := oldMemTable.Recs().NewIterator()
 			for itr.Next() {
@@ -207,12 +207,12 @@ func TestLogWrite_RecoverRead_WithOneEmptyFile(t *testing.T) {
 	logDetails_1 := pInfo.inactiveLogDetails[0]
 	details_1, _ := pInfo.loadLogFile(logDetails_1.FileSeqNum)
 	require.NotNil(t, details_1.WriteOffset)
-	require.True(t, details_1.WriteOffset == fileSize(logDetails_1.FileName))
+	require.True(t, details_1.WriteOffset == uint32(fileSize(logDetails_1.FileName)))
 	require.True(t, pInfo.memTable.Size() == int64(writesN))
 	//
 	logDetails_2 := pInfo.inactiveLogDetails[1]
 	details_2, _ := pInfo.loadLogFile(logDetails_2.FileSeqNum)
-	require.True(t, details_2.WriteOffset == fileSize(logDetails_2.FileName))
+	require.True(t, details_2.WriteOffset == uint32(fileSize(logDetails_2.FileName)))
 	require.NotNil(t, details_2.WriteOffset)
 }
 
@@ -238,10 +238,5 @@ func TestLogRollover(t *testing.T) {
 	}
 	pInfo.logWriter.FlushAndClose()
 	logDetails := pInfo.inactiveLogDetails[0]
-	require.True(t, DefaultConstants.logFileMaxLen >= fileSize(logDetails.FileName))
-}
-
-func fileSize(name string) uint32 {
-	fi, _ := os.Stat(name)
-	return uint32(fi.Size())
+	require.True(t, DefaultConstants.logFileMaxLen >= uint32(fileSize(logDetails.FileName)))
 }
