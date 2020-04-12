@@ -220,7 +220,7 @@ func (compactInfo *CompactInfo) compact() {
 		} else if rec.recType == DefaultConstants.writeReq {
 			sstWriter.noOfWriteReq++
 			keyHash := Hash(rec.key)
-			compactInfo.idx.Set(keyHash, indexRec) //index update only for write request//TODO - Test case
+			compactInfo.idx.Set(keyHash, indexRec) //index update only for write request
 		}
 		sstWriter.updateKeys(rec.key)
 
