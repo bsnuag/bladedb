@@ -367,7 +367,7 @@ func TestBuildCompactionBaseLevelAs0(t *testing.T) {
 
 	actualKeyOrder := make([]string, 0, 100)
 	sstRecCount := 0
-	reader, _ := NewSSTReader(compactInfo.newSSTReaders[0].SeqNm, partitionId)
+	reader := compactInfo.newSSTReaders[0]
 	iterator := reader.NewIterator()
 	for {
 		if rec, ok := iterator.Next(); ok {
@@ -380,7 +380,7 @@ func TestBuildCompactionBaseLevelAs0(t *testing.T) {
 	for i := 0; i < len(actualKeyOrder)-1; i++ {
 		require.LessOrEqual(t, actualKeyOrder[i], actualKeyOrder[i+1], "keys(from compaction heap) must be in sorted order")
 	}
-	require.Equal(t, 25, compactInfo.idx.Size(), "Expecting 25 entries in index post compaction")
+	require.Equal(t, 10, compactInfo.idx.Size(), "Expecting 10 entries (non-deleted) in index post compaction")
 	require.Equal(t, 25, sstRecCount, "Expecting 25 recs in new sst post compaction")
 }
 

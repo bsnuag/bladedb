@@ -158,7 +158,8 @@ func TestLogWrite_RecoverRead(t *testing.T) {
 		oldMemTable := pInfo.memTable
 		pInfo.memTable, _ = memstore.NewMemStore()
 		for _, logDetails := range pInfo.inactiveLogDetails {
-			details, _ := pInfo.loadLogFile(logDetails.FileSeqNum)
+			details, err := pInfo.loadLogFile(logDetails.FileSeqNum)
+			require.Nil(t, err)
 			require.NotNil(t, details.WriteOffset)
 			require.True(t, details.WriteOffset == uint32(fileSize(logDetails.FileName)))
 			require.True(t, (pInfo.memTable.Size() == int64(writesN/2)) || pInfo.memTable.Size() == int64(writesN))
@@ -184,8 +185,7 @@ func TestLogWrite_RecoverRead_WithOneEmptyFile(t *testing.T) {
 	DefaultConstants.noOfPartitions = 1
 	partitionId := 0
 	pInfo, _ := NewPartition(partitionId)
-	logWriter, _ := newLogWriter(partitionId, pInfo.getNextLogSeq())
-	pInfo.logWriter = logWriter
+	pInfo.logWriter, _ = newLogWriter(partitionId, pInfo.getNextLogSeq())
 	partitionInfoMap[partitionId] = pInfo
 
 	key := "abcdef%d"
@@ -196,6 +196,7 @@ func TestLogWrite_RecoverRead_WithOneEmptyFile(t *testing.T) {
 		pInfo.logWriter.Write([]byte(fmt.Sprintf(key, i)),
 			[]byte(fmt.Sprintf(value, i)), ts, 1)
 	}
+
 	details, _ := pInfo.logWriter.rollover()
 	pInfo.inactiveLogDetails = append(pInfo.inactiveLogDetails, details)
 
@@ -210,10 +211,10 @@ func TestLogWrite_RecoverRead_WithOneEmptyFile(t *testing.T) {
 	require.True(t, details_1.WriteOffset == uint32(fileSize(logDetails_1.FileName)))
 	require.True(t, pInfo.memTable.Size() == int64(writesN))
 	//
-	logDetails_2 := pInfo.inactiveLogDetails[1]
-	details_2, _ := pInfo.loadLogFile(logDetails_2.FileSeqNum)
-	require.True(t, details_2.WriteOffset == uint32(fileSize(logDetails_2.FileName)))
-	require.NotNil(t, details_2.WriteOffset)
+	emptyLogFileDetails := pInfo.inactiveLogDetails[1]
+	details2, err := pInfo.loadLogFile(emptyLogFileDetails.FileSeqNum)
+	require.Nil(t, details2)
+	require.True(t, err == EmptyFile, "Error Message Should be EmptyFile")
 }
 
 func TestLogRollover(t *testing.T) {
