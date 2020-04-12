@@ -86,6 +86,7 @@ func (pInfo *PartitionInfo) writeSSTAndIndex(memRecs *sklist.SkipList) (seqNum u
 	var endKey []byte = nil
 	var noOfDelReq uint64 = 0
 	var noOfWriteReq uint64 = 0
+	var indexOffset uint32 = 0
 	sstWriter, err := pInfo.NewSSTWriter()
 	if err != nil {
 		panic(err)
@@ -99,7 +100,7 @@ func (pInfo *PartitionInfo) writeSSTAndIndex(memRecs *sklist.SkipList) (seqNum u
 		value := next.Value().(*memstore.MemRec)
 		sstRec := SSTRec{value.RecType, key, value.Value, value.TS}
 		n := sstRec.SSTEncoder(sstEncoderBuf[:])
-		_, sstErr := sstWriter.Write(sstEncoderBuf[:n])
+		nn, sstErr := sstWriter.Write(sstEncoderBuf[:n])
 		if sstErr != nil {
 			panic(sstErr)
 		}
@@ -107,7 +108,7 @@ func (pInfo *PartitionInfo) writeSSTAndIndex(memRecs *sklist.SkipList) (seqNum u
 		//if rec type is writeReq then load to index, delete request need not load to index
 		if value.RecType == DefaultConstants.writeReq {
 			indexRec := IndexRec{
-				SSTRecOffset:  sstWriter.Offset,
+				SSTRecOffset:  indexOffset,
 				SSTFileSeqNum: sstWriter.SeqNum,
 				TS:            value.TS,
 			}
@@ -122,6 +123,7 @@ func (pInfo *PartitionInfo) writeSSTAndIndex(memRecs *sklist.SkipList) (seqNum u
 			startKey = key
 		}
 		endKey = key
+		indexOffset += nn
 	}
 
 	flushedFileSeqNum, err := sstWriter.FlushAndClose()
@@ -133,7 +135,7 @@ func (pInfo *PartitionInfo) writeSSTAndIndex(memRecs *sklist.SkipList) (seqNum u
 
 	levelNum := 0
 	sstReader, err := NewSSTReader(flushedFileSeqNum, pInfo.partitionId)
-	if err != nil {
+	if err != EmptyFile && err != nil {
 		fmt.Println(fmt.Sprintf("Failed to update reader map for sstFileSeqNum: %d", flushedFileSeqNum))
 		panic(err)
 	}

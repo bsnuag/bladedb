@@ -47,7 +47,7 @@ var DefaultConstants = Constants{
 	logFileStartOffset:  0,
 	walFlushPeriodInSec: 10,
 	maxLevel:            6,
-	noOfPartitions:      100,
+	noOfPartitions:      32,
 	maxSSTSize:          64e+6, //64 MB
 	maxSSTCompact:       32,    //soft value
 	minSSTCompact:       16,    //TODO - can we make it % based ..? 10 % of total SST ??
@@ -60,8 +60,8 @@ var DefaultConstants = Constants{
 		5: 1000000,
 		6: 0, //infinite
 	},
-	compactWorker:  8,
-	memFlushWorker: 8,
+	compactWorker:  0,
+	memFlushWorker: 32,
 
 	ClientListenPort: 9099,
 }

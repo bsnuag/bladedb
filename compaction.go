@@ -126,7 +126,6 @@ func compactWorker(workerName string) {
 		} else {
 			compactInfo = initCompactInfo(compactTask.thisLevel, compactTask.partitionId)
 			partitionInfo.activeCompaction = compactInfo
-			fmt.Println(compactInfo)
 			if compactInfo.thisLevel == 0 {
 				sKey, eKey = compactInfo.fillLevels() //sKey, eKey  - range of query for which we are running compaction
 			} else if compactInfo.thisLevel > 0 {
@@ -187,11 +186,9 @@ func (compactInfo *CompactInfo) compact() {
 	}
 
 	pInfo := partitionInfoMap[compactInfo.partitionId]
-	fmt.Println(pInfo)
-
 	compactInfo.buildHeap()
-	var bytesWritten uint32 = 0
 	sstWriter, err := pInfo.NewSSTWriter()
+	var indexOffset uint32 = 0
 	if err != nil {
 		panic(err)
 	}
@@ -205,47 +202,38 @@ func (compactInfo *CompactInfo) compact() {
 			continue
 		}
 		indexRec := IndexRec{
-			SSTRecOffset:  sstWriter.Offset,
+			SSTRecOffset:  indexOffset,
 			SSTFileSeqNum: sstWriter.SeqNum,
 			TS:            rec.ts,
 		}
 		totalCompactIndexWrite++
 		n := rec.SSTEncoder(sstEncoderBuf)
-		n, err := sstWriter.Write(sstEncoderBuf[:n])
+		nn, err := sstWriter.Write(sstEncoderBuf[:n])
 		if err != nil {
 			fmt.Println(fmt.Sprintf("Error while writing SST during compaction, sstFile: %s, err: %v",
 				sstWriter.file.Name(), err)) //TODO - what to do here ? abort compaction ..?
 		}
-		bytesWritten += n
+		indexOffset += nn
 
 		if rec.recType == DefaultConstants.deleteReq {
 			sstWriter.noOfDelReq++
 		} else if rec.recType == DefaultConstants.writeReq {
 			sstWriter.noOfWriteReq++
+			keyHash := Hash(rec.key)
+			compactInfo.idx.Set(keyHash, indexRec) //index update only for write request//TODO - Test case
 		}
-		if sstWriter.startKey == nil {
-			sstWriter.startKey = rec.key
-		}
-		sstWriter.endKey = rec.key
-		if bytesWritten >= DefaultConstants.maxSSTSize {
-			seqNum, err := sstWriter.FlushAndClose()
+		sstWriter.updateKeys(rec.key)
+
+		if indexOffset >= DefaultConstants.maxSSTSize {
+			_, err := sstWriter.FlushAndClose()
 			if err != nil {
 				panic(err)
 			}
-			reader, err := NewSSTReader(seqNum, compactInfo.partitionId)
-			if err != nil {
-				panic(err)
-			}
-			reader.startKey = sstWriter.startKey
-			reader.endKey = sstWriter.endKey
-			reader.noOfWriteReq = sstWriter.noOfWriteReq
-			reader.noOfDelReq = sstWriter.noOfDelReq
+			reader, err := sstWriter.NewSSTReader()
 			compactInfo.newSSTReaders = append(compactInfo.newSSTReaders, reader)
 			sstWriter, _ = pInfo.NewSSTWriter() //all new sst will be in next level
-			bytesWritten = 0
+			indexOffset = 0
 		}
-		keyHash := Hash(rec.key)
-		compactInfo.idx.Set(keyHash, indexRec)
 	}
 	seqNum, err := sstWriter.FlushAndClose()
 	if err != nil {
@@ -253,20 +241,16 @@ func (compactInfo *CompactInfo) compact() {
 	}
 
 	//if nothing written, delete the file
-	if bytesWritten == 0 {
+	if indexOffset == 0 {
 		err := deleteSST(pInfo.partitionId, seqNum)
 		if err != nil {
 			panic(err)
 		}
 	} else {
-		reader, err := NewSSTReader(seqNum, compactInfo.partitionId)
+		reader, err := sstWriter.NewSSTReader()
 		if err != nil {
 			panic(err)
 		}
-		reader.startKey = sstWriter.startKey
-		reader.endKey = sstWriter.endKey
-		reader.noOfWriteReq = sstWriter.noOfWriteReq
-		reader.noOfDelReq = sstWriter.noOfDelReq
 		compactInfo.newSSTReaders = append(compactInfo.newSSTReaders, reader)
 	}
 }
@@ -621,6 +605,13 @@ func (pInfo *PartitionInfo) level0PossibleCompaction() {
 			thisLevel:   0,
 		})
 	}
+}
+
+func (writer *SSTWriter) updateKeys(key []byte) {
+	if writer.startKey == nil {
+		writer.startKey = key
+	}
+	writer.endKey = key
 }
 
 //TODO - if a level(l) has delete request and no write req present in level > l then remove while compaction

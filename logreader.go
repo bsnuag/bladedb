@@ -15,7 +15,7 @@ type LogReader struct {
 
 func deleteLog(partitionId int, seqNum uint32) error {
 	fileName := LogDir + fmt.Sprintf(LogBaseFileName, seqNum, partitionId)
-	fmt.Println(fmt.Sprintf("delete log file: %s", fileName))
+	//fmt.Println(fmt.Sprintf("delete log file: %s", fileName))
 	return os.Remove(fileName)
 }
 
@@ -52,12 +52,22 @@ func (pInfo *PartitionInfo) loadUnclosedLogFile() error {
 	fmt.Println(fmt.Sprintf("%d unclosed(undeleated) log files found", len(unclosedFiles)))
 	for _, unClosedFile := range unclosedFiles {
 		inactiveLogDetails, err := pInfo.loadLogFile(unClosedFile.seqNum)
-		if err != nil {
+		if err != EmptyFile && err != nil {
 			panic(err)
 			return err
 		}
 		if inactiveLogDetails != nil {
 			pInfo.handleRolledOverLogDetails(inactiveLogDetails)
+		}
+		if err == EmptyFile {
+			mf1 := ManifestRec{
+				partitionId: unClosedFile.partitionId,
+				seqNum:      unClosedFile.seqNum,
+				fop:         DefaultConstants.fileDelete,
+				fileType:    DefaultConstants.logFileType,
+			}
+			writeManifest([]ManifestRec{mf1})
+			deleteLog(unClosedFile.partitionId, unClosedFile.seqNum)
 		}
 	}
 	return nil
@@ -65,6 +75,10 @@ func (pInfo *PartitionInfo) loadUnclosedLogFile() error {
 
 func (pInfo *PartitionInfo) loadLogFile(unClosedFileSeq uint32) (*InactiveLogDetails, error) {
 	logFile := LogDir + fmt.Sprintf(LogBaseFileName, unClosedFileSeq, pInfo.partitionId)
+	size := fileSize(logFile)
+	if size == 0 {
+		return nil, EmptyFile
+	}
 	logBytes, err := ioutil.ReadFile(logFile)
 	if err != nil {
 		panic(err)

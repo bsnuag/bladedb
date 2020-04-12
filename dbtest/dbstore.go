@@ -5,38 +5,34 @@ import (
 	"bytes"
 	"fmt"
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
 var start = time.Now()
 
 func main() {
+	bladedb.Open()
 
-	err := bladedb.Open()
-	if err != nil {
-		panic(fmt.Sprintf("error in init() of dbstore"))
-	}
-
-	nWrite := 100000000 / 2
+	nWrite := 10000000
+	//nWrite := 100000000 / 2
 	wg := sync.WaitGroup{}
 
-	wg.Add(nWrite)
-	writeRecs(nWrite, &wg)
-	wg.Wait()
+	//wg.Add(nWrite)
+	//writeRecs(nWrite, &wg)
 
 	//wg.Add(4)
 	//deleteRecs(4, &wg)
 	//wg.Wait()
 	//
-	//wg.Add(nWrite)
-	//readRecs(nWrite, &wg)
-	//wg.Wait()
+	wg.Add(nWrite)
+	readRecs(nWrite, &wg)
 
 	fmt.Println("TotalTime Before flushing..(sec): ", time.Since(start).Seconds())
 	fmt.Println("All Write completed..Flushing db")
 
-	bladedb.Flush()
-	//	bladedb.PrintPartitionStats()
+	bladedb.Drain()
+	//bladedb.PrintPartitionStats()
 	fmt.Println("TotalTime After Flusing (ns): ", time.Since(start).Seconds())
 
 	/*	fmt.Println("Starting up again...\n 1.Keys will be dumped to WAL and MEMTable from Unclosed WAL File \n 2. Keys will be loaded from SST to Index")
@@ -65,7 +61,7 @@ func writeRecs(nWrite int, wg *sync.WaitGroup) {
 	localStart := time.Now()
 	for i := 0; i < nWrite; i++ {
 		tChan <- &Temp{
-			key:   bytes.Repeat([]byte(fmt.Sprintf("%d", i)), 22*1)[:11],
+			key:   bytes.Repeat([]byte(fmt.Sprintf("%d", i)), 22*1)[:22],
 			value: bytes.Repeat([]byte(fmt.Sprintf("%d", i)), 128*1)[:128],
 			wg:    wg,
 		}
@@ -75,22 +71,17 @@ func writeRecs(nWrite int, wg *sync.WaitGroup) {
 			localStart = time.Now()
 		}
 	}
-	//for i := 0; i < nWrite; i++ {
-	//	j:=i
-	//	go func(k int) {
-	//		//bladedb.Put(bytes.Repeat([]byte(fmt.Sprintf("%d", k)), 128),
-	//		//	bytes.Repeat([]byte(fmt.Sprintf("%d", k)), 512))
-	//		bladedb.Put(bytes.Repeat([]byte("1"), 22*1),
-	//			bytes.Repeat([]byte("2"), 128*1))
-	//		wg.Done()
-	//	}(j)
-	//}
-	fmt.Println("Push Done....")
+	wg.Wait()
+	fmt.Println(fmt.Sprintf("Write Metrics, errored: %d", writeMetrics.err))
 }
 
 func doWrite(tempChan chan *Temp) {
 	for temp := range tempChan {
-		bladedb.Put(temp.key, temp.value)
+		err := bladedb.Put(temp.key, temp.value)
+		if err != nil {
+			atomic.AddUint32(&writeMetrics.err, 1)
+			fmt.Println(fmt.Sprintf("Error while writing key: %s, error: %v", temp.key, err))
+		}
 		temp.wg.Done()
 	}
 }
@@ -117,33 +108,66 @@ func doDelete(tempChan chan *Temp) {
 		bladedb.Remove(temp.key)
 		temp.wg.Done()
 	}
-}
+}*/
 
 func readRecs(nRead int, wg *sync.WaitGroup) {
-	tChan := make(chan *Temp, 100000)
-	for i := 0; i < runtime.NumCPU()*4; i++ {
+	tChan := make(chan *Temp, 50000000)
+	for i := 0; i < 32; i++ {
 		go doRead(tChan)
 	}
 
 	for i := 0; i < nRead; i++ {
-		j := i //j := 101 + i
 		tChan <- &Temp{
-			key:   fmt.Sprintf("Key%d", j),
-			value: "",
-			wg:    wg,
+			key: bytes.Repeat([]byte(fmt.Sprintf("%d", i)), 22*1)[:22],
+			wg:  wg,
 		}
 	}
-
+	wg.Wait()
+	fmt.Println(fmt.Sprintf("Read Metrics, found: %d, notFound: %d, errored: %d",
+		readMetrics.found, readMetrics.notFound, readMetrics.err))
 }
 
 func doRead(tempChan chan *Temp) {
 	for temp := range tempChan {
-		value,_ := bladedb.Get(temp.key)
-		fmt.Printf("Read Key: %s, Value: %s \n", temp.key, string(value))
-		//if value == nil {
-		//} else if value != nil {
-		//	fmt.Printf("Read Key: %s, Value: %s ", temp.key, string(value))
-		//}
+		value, err := bladedb.Get(temp.key)
+		if err != nil {
+			atomic.AddUint32(&readMetrics.err, 1)
+			fmt.Println(fmt.Sprintf("Error while reading key: %s, error: %v", temp.key, err))
+		} else if value == nil {
+			atomic.AddUint32(&readMetrics.notFound, 1)
+		} else if value != nil {
+			atomic.AddUint32(&readMetrics.found, 1)
+		}
+		updateReadCount(1)
 		temp.wg.Done()
 	}
-}*/
+}
+
+var writeMetrics = WriteMetrics{}
+
+type WriteMetrics struct {
+	err uint32
+}
+
+var readMetrics = ReadMetrics{}
+
+type ReadMetrics struct {
+	found    uint32
+	notFound uint32
+	err      uint32
+}
+
+var metrics = Metrics{}
+
+type Metrics struct {
+	rCount uint32
+	wCount uint32
+	dCount uint32
+}
+
+func updateReadCount(n uint32) {
+	count := atomic.AddUint32(&metrics.rCount, n)
+	if count%100000 == 0 {
+		fmt.Println(fmt.Sprintf("Read complted :%d", count))
+	}
+}

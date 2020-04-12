@@ -27,7 +27,6 @@ type SSTWriter struct {
 	writer      *bufio.Writer
 	partitionId int    //which partition this sst belongs to
 	SeqNum      uint32 // seqNum of sst file
-	Offset      uint32
 
 	startKey     []byte
 	endKey       []byte
@@ -79,7 +78,6 @@ func (writer *SSTWriter) Write(data []byte) (uint32, error) {
 	if err != nil {
 		return 0, err
 	}
-	writer.Offset = uint32(n) + writer.Offset
 	return uint32(n), nil
 }
 
@@ -112,14 +110,32 @@ type SSTReader struct {
 	noOfWriteReq uint64
 }
 
+var EmptyFile = errors.New("EmptyFile")
+
+func (writer *SSTWriter) NewSSTReader() (SSTReader, error) {
+	reader, err := NewSSTReader(writer.SeqNum, writer.partitionId)
+	if err != EmptyFile && err != nil {
+		return SSTReader{}, errors.Wrapf(err, "error while adding new sst reader for seqnum: %d partitionId: %d",
+			writer.SeqNum, writer.partitionId)
+	}
+	reader.startKey = writer.startKey
+	reader.endKey = writer.endKey
+	reader.noOfWriteReq = writer.noOfWriteReq
+	reader.noOfDelReq = writer.noOfDelReq
+	return reader, nil
+}
+
 func NewSSTReader(seqNum uint32, partitionId int) (SSTReader, error) {
 	fileName := SSTDir + fmt.Sprintf(SSTBaseFileName, partitionId, seqNum)
+	size := int(fileSize(fileName))
+	if size == 0 {
+		return SSTReader{}, EmptyFile
+	}
 	file, err := os.OpenFile(fileName, os.O_RDONLY, 0400) //TODO - can be moved to fileutils - a common place
 
 	if err != nil {
 		return SSTReader{}, errors.Wrapf(err, "Error while opening sst file: %s", fileName)
 	}
-	size := int(fileSize(fileName))
 	data, err := syscall.Mmap(int(file.Fd()), 0, size, syscall.PROT_READ, syscall.MAP_PRIVATE)
 	if err != nil {
 		return SSTReader{}, errors.Wrapf(err, "Error while mmaping sst file: %s", fileName)
