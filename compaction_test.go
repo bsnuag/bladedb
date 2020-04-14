@@ -31,7 +31,7 @@ func TestKeyRange(t *testing.T) {
 
 func TestFillLevels_level0WithOverlap(t *testing.T) {
 	partId := 0
-	pInfo, _ := NewPartition(partId)
+	pInfo:= NewPartition(partId)
 
 	lInfo0 := pInfo.levelsInfo[0]
 	lInfo0.sstSeqNums[123] = struct{}{}
@@ -78,7 +78,7 @@ func TestFillLevels_level0WithOverlap(t *testing.T) {
 func TestFillLevels_level0WithNoLevel1Data(t *testing.T) {
 	partId := 0
 
-	pInfo, _ := NewPartition(partId)
+	pInfo := NewPartition(partId)
 
 	pInfo.levelsInfo[0].sstSeqNums[123] = struct{}{}
 	pInfo.levelsInfo[0].sstSeqNums[124] = struct{}{}
@@ -121,7 +121,7 @@ func TestFillLevels_level0WithNoLevel1Data(t *testing.T) {
 
 func TestFillLevels_level1WithNoLevel2Data(t *testing.T) {
 	partId := 0
-	pInfo, _ := NewPartition(partId)
+	pInfo:= NewPartition(partId)
 
 	//Level 1 have only 3 sst which is lower than levelMaxSST[1] - this should be taken care when compactionInfo is being pushed to compactQueue
 	pInfo.levelsInfo[1].sstSeqNums[123] = struct{}{}
@@ -165,7 +165,7 @@ func TestFillLevels_level1WithOverlap(t *testing.T) {
 	partId := 0
 	level := 1
 	DefaultConstants.levelMaxSST[level] = 2
-	pInfo, _ := NewPartition(partId)
+	pInfo := NewPartition(partId)
 
 	pInfo.levelsInfo[1].sstSeqNums[123] = struct{}{}
 	pInfo.levelsInfo[1].sstSeqNums[124] = struct{}{}
@@ -210,7 +210,7 @@ func TestFillLevels_level1WithOverlapButNoLevel2Data(t *testing.T) {
 	partId := 0
 	level := 1
 	DefaultConstants.levelMaxSST[level] = 1
-	pInfo, _ := NewPartition(partId)
+	pInfo := NewPartition(partId)
 
 	pInfo.levelsInfo[1].sstSeqNums[123] = struct{}{}
 	pInfo.levelsInfo[1].sstSeqNums[124] = struct{}{}
@@ -251,7 +251,7 @@ func TestFillLevels_level1WithOverlapButNoLevel2Data(t *testing.T) {
 	require.Equal(t, 0, compactInfo.heap.Len(), "heap length should be zero")
 }
 
-func tempSSTReader(sKey string, eKey string, seqNum uint32, delReq uint64, writeReq uint64) SSTReader {
+func tempSSTReader(sKey string, eKey string, seqNum uint32, delReq uint32, writeReq uint32) SSTReader {
 	return SSTReader{
 		file:         nil,
 		SeqNm:        seqNum,
@@ -304,7 +304,7 @@ func TestBuildCompactionBaseLevelAs1(t *testing.T) {
 	}
 	// update SSTDir to temp directory
 	SSTDir = dir
-	partitionInfoMap[partitionId], _ = NewPartition(partitionId)
+	partitionInfoMap[partitionId] = NewPartition(partitionId)
 	partitionInfoMap[partitionId].sstSeq = 100
 	partitionInfoMap[partitionId].walSeq = 0
 
@@ -349,7 +349,7 @@ func TestBuildCompactionBaseLevelAs0(t *testing.T) {
 		log.Fatal(err)
 	}
 	SSTDir = dir
-	partitionInfoMap[partitionId], _ = NewPartition(partitionId)
+	partitionInfoMap[partitionId] = NewPartition(partitionId)
 	partitionInfoMap[partitionId].sstSeq = 100
 	partitionInfoMap[partitionId].walSeq = 0
 
@@ -391,8 +391,8 @@ func prepareInputSSTs(dir string, partitionId int) (SSTReader, SSTReader) {
 	//Write data into mem and then flush it to sst
 	sKe1 := ""
 	eKey1 := ""
-	var writeCount1 uint64 = 0
-	memTable, _ := memstore.NewMemStore()
+	var writeCount1 uint32 = 0
+	memTable := memstore.NewMemStore()
 	for i := 0; i < 20; i++ {
 		time.Sleep(time.Nanosecond * 10)
 		key, value := fmt.Sprintf("%dKey_", i), fmt.Sprintf("%dValue_", i)
@@ -420,7 +420,7 @@ func prepareInputSSTs(dir string, partitionId int) (SSTReader, SSTReader) {
 	sKey2 := ""
 	eKey2 := ""
 	memTable.RefreshMemTable()
-	var deleteCount2 uint64 = 0
+	var deleteCount2 uint32 = 0
 	for i := 10; i < 25; i++ {
 		time.Sleep(time.Nanosecond * 10)
 		key, value := fmt.Sprintf("%dKey_", i), fmt.Sprintf("%dValue_", i)

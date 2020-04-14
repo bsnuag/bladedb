@@ -39,7 +39,7 @@ func Get(key []byte) ([]byte, error) {
 	}
 
 	if indexRec, ok := pInfo.index.Get(hash); ok {
-		stableRec, err := pInfo.getFromSST(indexRec.SSTFileSeqNum, indexRec.SSTRecOffset)
+		stableRec, err := pInfo.readFromSST(indexRec.SSTFileSeqNum, indexRec.SSTRecOffset)
 
 		if err != nil {
 			return nil, errors.Wrapf(err, "error while reading sst record for indexRec: %v", indexRec)
@@ -49,13 +49,13 @@ func Get(key []byte) ([]byte, error) {
 	return nil, nil
 }
 
-func (pInfo *PartitionInfo) getFromSST(sNum uint32, offset uint32) (SSTRec, error) {
+func (pInfo *PartitionInfo) readFromSST(sNum uint32, offset uint32) (SSTRec, error) {
 	pInfo.levelLock.RLock()
 	defer pInfo.levelLock.RUnlock()
 
 	sstReader, ok := pInfo.sstReaderMap[sNum]
 	if !ok {
-		return SSTRec{}, errors.New(fmt.Sprintf("Could not find sstReader for seqNum %d in %d partition",
+		return SSTRec{}, errors.New(fmt.Sprintf("Could not find sstReader for seqNum %d, partition %d ",
 			sNum, pInfo.partitionId))
 	}
 	n, sstRec := sstReader.ReadRec(offset)

@@ -31,17 +31,23 @@ func memFlushWorker(flushWorkerName string) {
 	for {
 		memTask, ok := <-memFlushTaskQueue
 		if !ok {
-			fmt.Println(fmt.Sprintf("Received signal to stop mem flush worker, exiting: %s", flushWorkerName))
+			defaultLogger.Info().Msgf("Received signal to stop mem flush worker, exiting: %s", flushWorkerName)
 			break
 		}
 		start := time.Now()
 		pInfo := partitionInfoMap[memTask.PartitionId]
 		if pInfo == nil {
-			panic(fmt.Sprintf("Could not find partition Info for partition number %d", memTask.PartitionId))
+			defaultLogger.Fatal().Msgf("Could not find partition for partition number %d", memTask.PartitionId)
 		}
+
 		recs := memTask.MemTable.Recs()
-		fmt.Println(fmt.Sprintf("replaced mem-table for partitionId: %d, old-mem-table size: %d", memTask.PartitionId, recs.Length))
-		seqNum := pInfo.writeSSTAndIndex(recs)
+		seqNum, err := pInfo.writeSSTAndIndex(recs)
+		//this memtable will still be in memory, but won't be attempted for re-flush. Should this be retried for n times ?
+		if err != nil {
+			defaultLogger.Err(err).Int("partitionId", memTask.PartitionId).
+				Msg("Error while flushing memtable, aborting memflush")
+			continue
+		}
 
 		//sst and inactiveLogDetails's file is closed safely
 		mf1 := ManifestRec{
@@ -71,27 +77,27 @@ func memFlushWorker(flushWorkerName string) {
 		}
 		pInfo.inactiveLogDetails = newInactiveLogs
 		pInfo.readLock.Unlock()
+
 		deleteLog(memTask.PartitionId, memTask.FileSeqNum)
-		//check for possible compaction
 		pInfo.level0PossibleCompaction()
-		fmt.Println(fmt.Sprintf("Total time to flush mem table: %f, total Bytes: %d, partId: %d",
-			time.Since(start).Seconds(), memTask.WriteOffset, memTask.PartitionId))
+
+		defaultLogger.Info().
+			Int("partition", memTask.PartitionId).
+			Uint32("bytes flushed", memTask.WriteOffset).
+			Float64("duration (seconds)", time.Since(start).Seconds()).
+			Msg("MemFlush Completed")
 	}
 }
 
 //Stop reading while flushing data to sst, sst recs might not be available before it exits in indexRec
-func (pInfo *PartitionInfo) writeSSTAndIndex(memRecs *sklist.SkipList) (seqNum uint32) {
-	//sstReader meta
-	var startKey []byte = nil
-	var endKey []byte = nil
-	var noOfDelReq uint64 = 0
-	var noOfWriteReq uint64 = 0
-	var indexOffset uint32 = 0
+func (pInfo *PartitionInfo) writeSSTAndIndex(memRecs *sklist.SkipList) (uint32, error) {
+	var sstEncoderBuf = make([]byte, sstBufLen)
+	var startKey, endKey []byte = nil, nil
+	var noOfDelReq, noOfWriteReq, indexOffset uint32 = 0, 0, 0
 	sstWriter, err := pInfo.NewSSTWriter()
 	if err != nil {
-		panic(err)
+		return 0, err
 	}
-	var sstEncoderBuf = make([]byte, sstBufLen)
 	//flush memRecs to SST and index
 	iterator := memRecs.NewIterator()
 	for iterator.Next() {
@@ -102,7 +108,7 @@ func (pInfo *PartitionInfo) writeSSTAndIndex(memRecs *sklist.SkipList) (seqNum u
 		n := sstRec.SSTEncoder(sstEncoderBuf[:])
 		nn, sstErr := sstWriter.Write(sstEncoderBuf[:n])
 		if sstErr != nil {
-			panic(sstErr)
+			return 0, err
 		}
 
 		//if rec type is writeReq then load to index, delete request need not load to index
@@ -126,18 +132,14 @@ func (pInfo *PartitionInfo) writeSSTAndIndex(memRecs *sklist.SkipList) (seqNum u
 		indexOffset += nn
 	}
 
-	flushedFileSeqNum, err := sstWriter.FlushAndClose()
-
-	if err != nil {
-		fmt.Println("Error while flushing data sst")
-		panic(err)
+	if err := sstWriter.FlushAndClose(); err != nil {
+		return 0, err
 	}
 
 	levelNum := 0
-	sstReader, err := NewSSTReader(flushedFileSeqNum, pInfo.partitionId)
+	sstReader, err := NewSSTReader(sstWriter.SeqNum, pInfo.partitionId)
 	if err != EmptyFile && err != nil {
-		fmt.Println(fmt.Sprintf("Failed to update reader map for sstFileSeqNum: %d", flushedFileSeqNum))
-		panic(err)
+		return 0, err
 	}
 
 	sstReader.startKey = startKey
@@ -149,17 +151,17 @@ func (pInfo *PartitionInfo) writeSSTAndIndex(memRecs *sklist.SkipList) (seqNum u
 	pInfo.levelLock.Lock()
 	defer pInfo.levelLock.Unlock()
 
-	pInfo.levelsInfo[levelNum].sstSeqNums[flushedFileSeqNum] = struct{}{}
-	pInfo.sstReaderMap[flushedFileSeqNum] = sstReader
+	pInfo.levelsInfo[levelNum].sstSeqNums[sstWriter.SeqNum] = struct{}{}
+	pInfo.sstReaderMap[sstWriter.SeqNum] = sstReader
 
-	return sstWriter.SeqNum
+	return sstWriter.SeqNum, nil
 }
 
 func publishMemFlushTask(inactiveLogDetails *InactiveLogDetails) {
 	if isMemFlushActive() {
 		memFlushTaskQueue <- inactiveLogDetails
 	} else {
-		fmt.Println("MemFlush is not active, cannot publish new task")
+		defaultLogger.Info().Msg("MemFlush is not active, cannot publish new task")
 	}
 }
 
@@ -171,10 +173,12 @@ func stopMemFlushWorker() {
 	if DefaultConstants.memFlushWorker == 0 {
 		return
 	}
-	fmt.Println("Request received to stop MemFlush workers", memFlushTaskQueue)
+	defaultLogger.Info().Msg("Request received to stop MemFlush workers")
+
 	atomic.AddInt32(&memFlushActive, -1)
 	close(memFlushTaskQueue)
-	fmt.Println("Waiting for all submitted mem flush tasks to be completed")
+
+	defaultLogger.Info().Msg("Waiting for all submitted mem flush tasks to complete")
 	activeMemFlushSubscriber.Wait()
-	fmt.Println("all submitted MemFlush tasks completed")
+	defaultLogger.Info().Msg("all submitted MemFlush tasks completed")
 }

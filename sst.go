@@ -7,6 +7,7 @@ import (
 	"github.com/pkg/errors"
 	"os"
 	"syscall"
+	"time"
 )
 
 const sstEncoderBufMetaLen = 1<<8 - 1 //1 byte(recType) + 16 bytes(ts)
@@ -30,8 +31,8 @@ type SSTWriter struct {
 
 	startKey     []byte
 	endKey       []byte
-	noOfDelReq   uint64
-	noOfWriteReq uint64
+	noOfDelReq   uint32
+	noOfWriteReq uint32
 }
 
 func (pInfo *PartitionInfo) NewSSTWriter() (*SSTWriter, error) {
@@ -44,7 +45,6 @@ func NewSSTWriter(partitionId int, seqNum uint32) (*SSTWriter, error) {
 	file, err := os.OpenFile(fileName, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0600)
 
 	if err != nil {
-		panic("Error while opening or creating sst file")
 		return nil, err
 	}
 
@@ -81,21 +81,19 @@ func (writer *SSTWriter) Write(data []byte) (uint32, error) {
 	return uint32(n), nil
 }
 
-func (writer *SSTWriter) FlushAndClose() (uint32, error) {
-	var oldSeqNum uint32 = 0
+func (writer *SSTWriter) FlushAndClose() error {
 	if writer.writer != nil {
 		if err := writer.writer.Flush(); err != nil {
-			return oldSeqNum, err
+			return err
 		}
 		if err := writer.file.Sync(); err != nil {
-			return oldSeqNum, err
+			return err
 		}
 		if err := writer.file.Close(); err != nil {
-			return oldSeqNum, err
+			return err
 		}
 	}
-	oldSeqNum = writer.SeqNum
-	return oldSeqNum, nil
+	return nil
 }
 
 type SSTReader struct {
@@ -106,8 +104,8 @@ type SSTReader struct {
 	//meta info
 	startKey     []byte
 	endKey       []byte
-	noOfDelReq   uint64
-	noOfWriteReq uint64
+	noOfDelReq   uint32
+	noOfWriteReq uint32
 }
 
 var EmptyFile = errors.New("EmptyFile")
@@ -127,16 +125,18 @@ func (writer *SSTWriter) NewSSTReader() (SSTReader, error) {
 
 func NewSSTReader(seqNum uint32, partitionId int) (SSTReader, error) {
 	fileName := SSTDir + fmt.Sprintf(SSTBaseFileName, partitionId, seqNum)
-	size := int(fileSize(fileName))
-	if size == 0 {
+	size, err := fileSize(fileName)
+	if err == EmptyFile {
 		return SSTReader{}, EmptyFile
+	} else if err != nil {
+		return SSTReader{}, err
 	}
 	file, err := os.OpenFile(fileName, os.O_RDONLY, 0400) //TODO - can be moved to fileutils - a common place
 
 	if err != nil {
 		return SSTReader{}, errors.Wrapf(err, "Error while opening sst file: %s", fileName)
 	}
-	data, err := syscall.Mmap(int(file.Fd()), 0, size, syscall.PROT_READ, syscall.MAP_PRIVATE)
+	data, err := syscall.Mmap(int(file.Fd()), 0, int(size), syscall.PROT_READ, syscall.MAP_PRIVATE)
 	if err != nil {
 		return SSTReader{}, errors.Wrapf(err, "Error while mmaping sst file: %s", fileName)
 	}
@@ -193,7 +193,8 @@ func (reader SSTReader) ReadRec(offset uint32) (uint32, SSTRec) {
 //index is thread-safe
 //this is invoked sequentially
 func (reader *SSTReader) loadSSTRec(idx *Index) (uint32, error) {
-	fmt.Println(fmt.Sprintf("loading sst seqno: %d, partitionId: %d", reader.SeqNm, reader.partitionId))
+	startT := time.Now()
+	defaultLogger.Info().Msgf("loading sst file: %s, partition: %d", reader.file.Name(), reader.partitionId)
 	var recsRead uint32 = 0
 	var readOffset uint32 = 0
 	iterator := reader.NewIterator()
@@ -229,20 +230,24 @@ func (reader *SSTReader) loadSSTRec(idx *Index) (uint32, error) {
 		reader.endKey = sstRec.key
 		recsRead++
 	}
-	fmt.Println(fmt.Sprintf("loading complete "+
-		"sst seqno: %d, partitionId: %d, recs loaded: %d, "+
+	defaultLogger.Info().Msgf("sst loading complete "+
+		"duration(sec): %f, file: %s, partitionId: %d, recs loaded: %d, "+
 		"delete-req: %d, write-req: %d, start-key: %s, end-key: %s",
-		reader.SeqNm, reader.partitionId, recsRead, reader.noOfDelReq,
-		reader.noOfWriteReq, string(reader.startKey), string(reader.endKey)))
+		time.Since(startT).Seconds(), reader.file.Name(), reader.partitionId, recsRead, reader.noOfDelReq,
+		reader.noOfWriteReq, string(reader.startKey), string(reader.endKey))
 	return recsRead, nil
 }
 
 func (reader SSTReader) Close() error {
 	err := syscall.Munmap(reader.data)
 	if err != nil {
-		panic(errors.Wrapf(err, "error while un-mapping sst file seqNum: %d partitionId: %d", reader.SeqNm, reader.partitionId))
+		return errors.Wrapf(err, "error while un-mapping sst file seqNum: %d partitionId: %d", reader.SeqNm, reader.partitionId)
 	}
-	return reader.file.Close()
+	err = reader.file.Close()
+	if err != nil {
+		return errors.Wrapf(err, "error while closing sst file seqNum: %d partitionId: %d", reader.SeqNm, reader.partitionId)
+	}
+	return nil
 }
 
 func deleteSST(partitionId int, seqNum uint32) error {

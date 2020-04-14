@@ -3,7 +3,6 @@ package bladedb
 import (
 	"crypto/sha256"
 	"encoding/binary"
-	"github.com/pkg/errors"
 	"os"
 	"sort"
 	"time"
@@ -40,11 +39,12 @@ func sortedKeys(inMap map[uint32]SSTReader) []uint32 {
 	return sortedKeys
 }
 
-func fileSize(file string) int64 {
+func fileSize(file string) (int64, error) {
 	stat, err := os.Stat(file)
 	if err != nil {
-		panic(errors.Wrapf(err, "Error while getting file size for: %s file", file))
-		return 0
+		return 0, err
+	} else if stat.Size() == 0 {
+		return 0, EmptyFile
 	}
-	return stat.Size()
+	return stat.Size(), nil
 }

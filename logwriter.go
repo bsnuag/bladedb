@@ -19,9 +19,7 @@ const logEncoderBufMetaLen = 1<<8 - 1 //1 byte(recType) + 16 bytes(ts)
 var logEncoderPartLen = logEncoderBufMetaLen + DefaultConstants.keyMaxLen + DefaultConstants.keyMaxLen
 var logEncoderBuf = make([]byte, uint32(DefaultConstants.noOfPartitions)*logEncoderPartLen)
 
-/*
-	LogRecord - record to be inserted into log-commit files
-*/
+//LogRecord - record to be inserted into log-commit files
 type LogRecord struct {
 	recType byte //write or tombstone
 	key     []byte
@@ -29,29 +27,7 @@ type LogRecord struct {
 	ts      uint64
 }
 
-func (record LogRecord) KeyString() string {
-	return string(record.key)
-}
-
-func (record LogRecord) ValueString() string {
-	return string(record.value)
-}
-
-func (record LogRecord) Key() []byte {
-	return record.key
-}
-
-func (record LogRecord) Value() []byte {
-	return record.value
-}
-
-func (record LogRecord) Ts() uint64 {
-	return record.ts
-}
-
-/*
-	LogWriter - writes record to log-commit file
-*/
+//	LogWriter - writes record to log-commit file
 type LogWriter struct {
 	file        *os.File
 	fileWriter  *bufio.Writer
@@ -73,7 +49,6 @@ func newLogWriter(partitionId int, seqNum uint32) (*LogWriter, error) {
 	file, err := os.OpenFile(fileName, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0644)
 
 	if err != nil {
-		fmt.Printf("Error while opening or creating WAL file:%s", fileName)
 		return nil, err
 	}
 
@@ -95,10 +70,6 @@ func newLogWriter(partitionId int, seqNum uint32) (*LogWriter, error) {
 	return logWriter, nil
 }
 
-type LogEncoder interface {
-	Encode() ([]byte, []byte)
-}
-
 //6 byte logrec fields length, rest bytes data
 func (logRec LogRecord) Encode(logRecBuf []byte) uint32 {
 	binary.LittleEndian.PutUint16(logRecBuf[0:2], uint16(len(logRec.key)))
@@ -112,7 +83,7 @@ func (logRec LogRecord) Encode(logRecBuf []byte) uint32 {
 	offset += len(logRec.key)
 	copy(logRecBuf[offset:], logRec.value)
 	offset += len(logRec.value)
-	offset += binary.PutUvarint(logRecBuf[offset:], logRec.Ts())
+	offset += binary.PutUvarint(logRecBuf[offset:], logRec.ts)
 	return uint32(offset)
 }
 
@@ -141,14 +112,14 @@ func (writer *LogWriter) Write(key []byte, value []byte, ts uint64, recType byte
 	return inactiveLogDetails, nil
 }
 
-//flush & closes current wal file and assigns a new file to wal writer
+//flush & closes current wal file and assigns a new file to log writer
 func (writer *LogWriter) rollover() (*InactiveLogDetails, error) {
 	pInfo := partitionInfoMap[writer.partitionId]
 	newLogWriter, err := newLogWriter(writer.partitionId, pInfo.getNextLogSeq())
 	if err != nil {
-		panic(err)
+		return nil, err
 	}
-	fmt.Println(LogRollingMsg, writer.file.Name(), newLogWriter.LogFileName())
+	defaultLogger.Info().Msgf("rolling log from: %v to: %v", writer.file.Name(), newLogWriter.LogFileName())
 	//flush content of buffer to disk and close file
 	inactiveLogDetails, err := writer.FlushAndClose()
 
@@ -164,14 +135,6 @@ func (writer *LogWriter) rollover() (*InactiveLogDetails, error) {
 	return inactiveLogDetails, nil
 }
 
-// Does Follwoing -
-// 1. Closes running wal file & assigns new wal file
-// 2. Return running wal file details i.e. InactiveLogDetails
-
-func (writer *LogWriter) FlushAndRollOver() (*InactiveLogDetails, error) {
-	return writer.rollover()
-}
-
 //Flush, Sync, Close
 func (writer *LogWriter) FlushAndClose() (*InactiveLogDetails, error) {
 	var inactiveLogDetails *InactiveLogDetails = nil
@@ -179,11 +142,11 @@ func (writer *LogWriter) FlushAndClose() (*InactiveLogDetails, error) {
 	//flush content of buffer to disk and close file
 	if writer.fileWriter != nil {
 		if err := writer.FlushAndSync(); err != nil {
-			return inactiveLogDetails, nil
+			return inactiveLogDetails, err
 		}
 
 		if err := writer.file.Close(); err != nil {
-			return inactiveLogDetails, nil
+			return inactiveLogDetails, err
 		}
 		inactiveLogDetails = &InactiveLogDetails{
 			FileName:    writer.file.Name(),

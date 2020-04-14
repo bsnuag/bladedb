@@ -18,15 +18,15 @@ func main() {
 	//nWrite := 100000000 / 2
 	wg := sync.WaitGroup{}
 
-	//wg.Add(nWrite)
-	//writeRecs(nWrite, &wg)
+	wg.Add(nWrite)
+	writeRecs(nWrite, &wg)
 
 	//wg.Add(4)
 	//deleteRecs(4, &wg)
 	//wg.Wait()
 	//
-	wg.Add(nWrite)
-	readRecs(nWrite, &wg)
+	//wg.Add(nWrite)
+	//readRecs(nWrite, &wg)
 
 	fmt.Println("TotalTime Before flushing..(sec): ", time.Since(start).Seconds())
 	fmt.Println("All Write completed..Flushing db")

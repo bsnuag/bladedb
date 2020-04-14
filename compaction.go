@@ -3,6 +3,7 @@ package bladedb
 import (
 	"container/heap"
 	"fmt"
+	"github.com/pkg/errors"
 	"os"
 	"sort"
 	"time"
@@ -45,14 +46,10 @@ func (h *heapArr) Top() interface{} { //get top , doesn't remove from heap
 func (compactInfo *CompactInfo) buildHeap() {
 	compactInfo.heap = make(heapArr, 0, len(compactInfo.botLevelSST)+len(compactInfo.topLevelSST))
 	compactInfo.sortInputSST()
-	//initialise heap with recs from all ssts
+	//initialise heap with first rec of all selected ssts
 	for _, sstReader := range compactInfo.botLevelSST {
 		iterator := sstReader.NewIterator()
-		sstRec, ok := iterator.Next()
-		if !ok { //shouldn't happen....each sst will have data
-			fmt.Println(fmt.Sprintf("Found empty rec in sst file: %s", sstReader.file.Name()))
-			continue
-		}
+		sstRec, _ := iterator.Next()
 		ele := &HeapEle{
 			iterator: iterator,
 			rec:      sstRec,
@@ -62,11 +59,7 @@ func (compactInfo *CompactInfo) buildHeap() {
 
 	for _, sstReader := range compactInfo.topLevelSST {
 		iterator := sstReader.NewIterator()
-		sstRec, ok := iterator.Next()
-		if !ok { //shouldn't happen....each sst will have data
-			fmt.Println(fmt.Sprintf("Found empty rec in sst file: %s", sstReader.file.Name()))
-			continue
-		}
+		sstRec, _ := iterator.Next()
 		ele := &HeapEle{
 			iterator: iterator,
 			rec:      sstRec,
@@ -110,19 +103,23 @@ func compactWorker(workerName string) {
 	for {
 		compactTask, ok := <-compactTaskQueue
 		if !ok {
-			fmt.Println(fmt.Sprintf("Received signal to stop compact worker, exiting: %s", workerName))
+			defaultLogger.Info().Msgf("Received signal to stop compact worker, exiting: %s", workerName)
 			break
 		}
-		fmt.Println(fmt.Sprintf("received compaction request for partiton: %d, level: %d",
-			compactTask.partitionId, compactTask.nextLevel))
+		defaultLogger.Info().
+			Int("partition ", compactTask.partitionId).Int("base level ", compactTask.thisLevel).
+			Msgf("compaction request received")
+
 		partitionInfo := partitionInfoMap[compactTask.partitionId]
 
 		partitionInfo.compactLock.Lock() //TODO - check if using mutex inside channel a good practice
 		var compactInfo *CompactInfo = nil
-		var sKey, eKey = "", ""
+		sKey, eKey := "", ""
+
 		if partitionInfo.activeCompaction != nil {
-			fmt.Println(fmt.Sprintf("Compaction is active for partition: %d, can not trigger another one",
-				partitionInfo.partitionId))
+			defaultLogger.Info().
+				Int("partition ", compactTask.partitionId).
+				Msgf("compaction within partition is sequential, cannot trigger another one")
 		} else {
 			compactInfo = initCompactInfo(compactTask.thisLevel, compactTask.partitionId)
 			partitionInfo.activeCompaction = compactInfo
@@ -141,31 +138,38 @@ func compactWorker(workerName string) {
 		partitionInfo.compactLock.Unlock()
 
 		if compactInfo != nil {
+			botLevelSSTNames, topLevelSSTNames, newSSTNames := compactInfo.compactFileNames()
 			compactStartTime := time.Now()
-			compactInfo.compact()
-			if len(compactInfo.newSSTReaders) > 0 {
-				partitionInfo.updatePartition()
+			if compactErr := compactInfo.compact(); compactErr != nil { //abort compaction and log error message
+				partitionInfo.completeCompaction()
+				defaultLogger.Error().
+					Err(compactErr).Int("partition", compactInfo.partitionId).
+					Msgf("Error in compaction, bottom level(%d) ssts: %v, bottom level(%d) ssts : %v",
+						compactInfo.thisLevel, botLevelSSTNames, compactInfo.nextLevel, topLevelSSTNames)
+			} else {
+				if len(compactInfo.newSSTReaders) > 0 {
+					partitionInfo.updatePartition()
+				}
+				partitionInfo.completeCompaction()
+				partitionInfo.checkPossibleCompaction(compactInfo.nextLevel)
+
+				defaultLogger.Info().
+					Int("Partition", compactInfo.partitionId).
+					Float64("duration (Seconds)", time.Since(compactStartTime).Seconds()).
+					Int("Bottom level", compactInfo.thisLevel).
+					Strs("Bottom level files ", botLevelSSTNames).
+					Int("Top level", compactInfo.nextLevel).
+					Strs("Top level files ", topLevelSSTNames).
+					Int("Compacted Index Size ", compactInfo.idx.Size()).
+					Strs("Resultant SST files ", newSSTNames).
+					Msg("Compaction Completed")
 			}
-			//check if nextLevel is eligible for compaction
-			partitionInfo.checkAndCompleteCompaction(compactInfo.nextLevel)
-			fmt.Println(fmt.Sprintf("Compaction completed....."+
-				"Compaction Stats-\n "+
-				"Total execution time(sec): %f\n "+
-				"Total Bottom Level Files: %d\n "+
-				"Total Top Level Files: %d\n "+
-				"Compacted Index Size:%d\n "+
-				"New SSTs generated:%v\n",
-				time.Since(compactStartTime).Seconds(), len(compactInfo.botLevelSST),
-				len(compactInfo.topLevelSST), compactInfo.idx.Size(), compactInfo.newSSTReaders))
 		}
 	}
 }
 
-func (pInfo *PartitionInfo) checkAndCompleteCompaction(level int) {
-	pInfo.compactLock.Lock()
-	pInfo.activeCompaction = nil //complete compaction
-	pInfo.compactLock.Unlock()
-
+//check if nextLevel is eligible for compaction
+func (pInfo *PartitionInfo) checkPossibleCompaction(level int) {
 	if level != DefaultConstants.maxLevel && len(pInfo.levelsInfo[level].sstSeqNums) > int(DefaultConstants.levelMaxSST[level]) {
 		publishCompactTask(&CompactInfo{
 			partitionId: pInfo.partitionId,
@@ -174,31 +178,39 @@ func (pInfo *PartitionInfo) checkAndCompleteCompaction(level int) {
 	}
 }
 
-func (compactInfo *CompactInfo) compact() {
+func (pInfo PartitionInfo) completeCompaction() {
+	pInfo.compactLock.Lock()
+	pInfo.activeCompaction = nil //complete compaction
+	pInfo.compactLock.Unlock()
+}
+
+func (compactInfo *CompactInfo) compact() error {
 	//if base level is > 0 and base level doesn't have overlapped ssts from top level then just update the level in manifest
 	if compactInfo.thisLevel > 0 && len(compactInfo.topLevelSST) == 0 {
 		compactInfo.updateLevel()
-		return
+		return nil
 	}
 	err := compactInfo.updateSSTReader() //TODO - check if we can remove this
 	if err != nil {
 		panic(err)
+		return err
 	}
 
-	pInfo := partitionInfoMap[compactInfo.partitionId]
-	compactInfo.buildHeap()
-	sstWriter, err := pInfo.NewSSTWriter()
 	var indexOffset uint32 = 0
+	compactInfo.buildHeap()
+
+	pInfo := partitionInfoMap[compactInfo.partitionId]
+	sstWriter, err := pInfo.NewSSTWriter()
 	if err != nil {
-		panic(err)
+		return err
 	}
 	var sstEncoderBuf = make([]byte, uint32(DefaultConstants.noOfPartitions)*logEncoderPartLen)
 	totalCompactIndexWrite := 0
 	for compactInfo.heap.Len() > 0 {
 		_, rec := compactInfo.nextRec()
 		if compactInfo.nextLevel == DefaultConstants.maxLevel && rec.recType == DefaultConstants.deleteReq {
-			fmt.Println(fmt.Sprintf("Tombstone rec: %v, with target level=maxlevel, removing it from adding it "+
-				"to compacted sst", rec))
+			defaultLogger.Info().Msgf("Tombstone rec: %v, with target level=%d, "+
+				"avoiding it from adding it to compacted sst", DefaultConstants.maxLevel, rec)
 			continue
 		}
 		indexRec := IndexRec{
@@ -210,8 +222,7 @@ func (compactInfo *CompactInfo) compact() {
 		n := rec.SSTEncoder(sstEncoderBuf)
 		nn, err := sstWriter.Write(sstEncoderBuf[:n])
 		if err != nil {
-			fmt.Println(fmt.Sprintf("Error while writing SST during compaction, sstFile: %s, err: %v",
-				sstWriter.file.Name(), err)) //TODO - what to do here ? abort compaction ..?
+			return errors.Wrapf(err, "Error while writing to SST during compaction, sstFile: %s", sstWriter.file.Name())
 		}
 		indexOffset += nn
 
@@ -225,34 +236,36 @@ func (compactInfo *CompactInfo) compact() {
 		sstWriter.updateKeys(rec.key)
 
 		if indexOffset >= DefaultConstants.maxSSTSize {
-			_, err := sstWriter.FlushAndClose()
-			if err != nil {
-				panic(err)
+			if err := sstWriter.FlushAndClose(); err != nil {
+				return err
 			}
 			reader, err := sstWriter.NewSSTReader()
+			if err != nil {
+				return err
+			}
 			compactInfo.newSSTReaders = append(compactInfo.newSSTReaders, reader)
 			sstWriter, _ = pInfo.NewSSTWriter() //all new sst will be in next level
 			indexOffset = 0
 		}
 	}
-	seqNum, err := sstWriter.FlushAndClose()
-	if err != nil {
-		panic(err)
+	if err = sstWriter.FlushAndClose(); err != nil {
+		return err
 	}
 
 	//if nothing written, delete the file
 	if indexOffset == 0 {
-		err := deleteSST(pInfo.partitionId, seqNum)
+		err := deleteSST(pInfo.partitionId, sstWriter.SeqNum)
 		if err != nil {
-			panic(err)
+			return err
 		}
 	} else {
 		reader, err := sstWriter.NewSSTReader()
 		if err != nil {
-			panic(err)
+			return err
 		}
 		compactInfo.newSSTReaders = append(compactInfo.newSSTReaders, reader)
 	}
+	return nil
 }
 
 //does followings -
@@ -265,32 +278,12 @@ func (pInfo *PartitionInfo) updatePartition() { //TODO - test cases
 	compactInfo := pInfo.activeCompaction
 	manifestRecs := make([]ManifestRec, 0, len(compactInfo.newSSTReaders)+len(compactInfo.botLevelSST)+len(compactInfo.topLevelSST))
 	//update active sstReaderMap with newly created ssts
-	for _, newReader := range compactInfo.newSSTReaders {
-		mf1 := ManifestRec{
-			partitionId: pInfo.partitionId,
-			seqNum:      newReader.SeqNm,
-			levelNum:    compactInfo.nextLevel,
-			fop:         DefaultConstants.fileCreate,
-			fileType:    DefaultConstants.sstFileType,
-		}
-		manifestRecs = append(manifestRecs, mf1)
-		pInfo.sstReaderMap[newReader.SeqNm] = newReader
-		pInfo.levelsInfo[compactInfo.nextLevel].sstSeqNums[newReader.SeqNm] = struct{}{}
-	}
+	newSSTManifests := pInfo.activateNewSSTs()
+	manifestRecs = append(manifestRecs, newSSTManifests...)
 	pInfo.levelLock.Unlock()
 
 	//update active index with new index data (new ssts)
-	for tmpKeyHash, tmpIndexRec := range compactInfo.idx.index {
-		idxRec, ok := pInfo.index.Get(tmpKeyHash)
-		if !ok {
-			pInfo.index.Set(tmpKeyHash, tmpIndexRec)
-		} else {
-			if idxRec.TS > tmpIndexRec.TS { //if there is a latest write
-				continue
-			}
-			pInfo.index.Set(tmpKeyHash, tmpIndexRec)
-		}
-	}
+	pInfo.updateActiveIndex()
 
 	deleteReaders := make([]SSTReader, 0, len(compactInfo.botLevelSST)+len(compactInfo.topLevelSST))
 	//remove compacted sst's from active sstReaderMap
@@ -521,7 +514,7 @@ func (pInfo *PartitionInfo) sortedSeqNums(sstSeqMap map[uint32]struct{}) []uint3
 	return sortedKey
 }
 
-func computeDeleteToWriteRatio(deleteCount uint64, writeCount uint64) int {
+func computeDeleteToWriteRatio(deleteCount uint32, writeCount uint32) int {
 	return (int)(deleteCount / (deleteCount + writeCount))
 }
 
@@ -598,7 +591,7 @@ func initCompactInfo(level int, partId int) *CompactInfo {
 	}
 }
 
-func (pInfo *PartitionInfo) level0PossibleCompaction() {
+func (pInfo *PartitionInfo) level0PossibleCompaction() { //merge with
 	if len(pInfo.levelsInfo[0].sstSeqNums) >= 4 {
 		publishCompactTask(&CompactInfo{
 			partitionId: pInfo.partitionId,

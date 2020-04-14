@@ -134,7 +134,7 @@ func TestLogWrite_RecoverRead(t *testing.T) {
 	defer prepareLogTest()()
 
 	for pId := 0; pId < DefaultConstants.noOfPartitions; pId++ {
-		pInfo, _ := NewPartition(pId)
+		pInfo := NewPartition(pId)
 		logWriter, _ := newLogWriter(pId, pInfo.getNextLogSeq())
 		pInfo.logWriter = logWriter
 		partitionInfoMap[pId] = pInfo
@@ -156,12 +156,13 @@ func TestLogWrite_RecoverRead(t *testing.T) {
 		details, _ := pInfo.logWriter.FlushAndClose()
 		pInfo.inactiveLogDetails = append(pInfo.inactiveLogDetails, details)
 		oldMemTable := pInfo.memTable
-		pInfo.memTable, _ = memstore.NewMemStore()
+		pInfo.memTable = memstore.NewMemStore()
 		for _, logDetails := range pInfo.inactiveLogDetails {
 			details, err := pInfo.loadLogFile(logDetails.FileSeqNum)
 			require.Nil(t, err)
 			require.NotNil(t, details.WriteOffset)
-			require.True(t, details.WriteOffset == uint32(fileSize(logDetails.FileName)))
+			fsz, _ := fileSize(logDetails.FileName)
+			require.True(t, details.WriteOffset == uint32(fsz))
 			require.True(t, (pInfo.memTable.Size() == int64(writesN/2)) || pInfo.memTable.Size() == int64(writesN))
 			itr := oldMemTable.Recs().NewIterator()
 			for itr.Next() {
@@ -184,7 +185,7 @@ func TestLogWrite_RecoverRead_WithOneEmptyFile(t *testing.T) {
 
 	DefaultConstants.noOfPartitions = 1
 	partitionId := 0
-	pInfo, _ := NewPartition(partitionId)
+	pInfo := NewPartition(partitionId)
 	pInfo.logWriter, _ = newLogWriter(partitionId, pInfo.getNextLogSeq())
 	partitionInfoMap[partitionId] = pInfo
 
@@ -208,7 +209,8 @@ func TestLogWrite_RecoverRead_WithOneEmptyFile(t *testing.T) {
 	logDetails_1 := pInfo.inactiveLogDetails[0]
 	details_1, _ := pInfo.loadLogFile(logDetails_1.FileSeqNum)
 	require.NotNil(t, details_1.WriteOffset)
-	require.True(t, details_1.WriteOffset == uint32(fileSize(logDetails_1.FileName)))
+	fsz, _ := fileSize(logDetails_1.FileName)
+	require.True(t, details_1.WriteOffset == uint32(fsz))
 	require.True(t, pInfo.memTable.Size() == int64(writesN))
 	//
 	emptyLogFileDetails := pInfo.inactiveLogDetails[1]
@@ -221,7 +223,7 @@ func TestLogRollover(t *testing.T) {
 	defer prepareLogTest()()
 	DefaultConstants.noOfPartitions = 1
 	partitionId := 0
-	pInfo, _ := NewPartition(partitionId)
+	pInfo := NewPartition(partitionId)
 	logWriter, _ := newLogWriter(partitionId, pInfo.getNextLogSeq())
 	pInfo.logWriter = logWriter
 	partitionInfoMap[partitionId] = pInfo
@@ -239,5 +241,6 @@ func TestLogRollover(t *testing.T) {
 	}
 	pInfo.logWriter.FlushAndClose()
 	logDetails := pInfo.inactiveLogDetails[0]
-	require.True(t, DefaultConstants.logFileMaxLen >= uint32(fileSize(logDetails.FileName)))
+	fsz, _ := fileSize(logDetails.FileName)
+	require.True(t, DefaultConstants.logFileMaxLen >= uint32(fsz))
 }

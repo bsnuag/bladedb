@@ -43,10 +43,7 @@ func setupTest() (tearTest func()) {
 //partition_writer test cases
 func TestPartition_Delete_Write_Read_CountVerify(t *testing.T) {
 	defer setupTest()()
-
-	if err := Open(); err != nil {
-		panic(err)
-	}
+	Open()
 
 	for i := 0; i < 1000; i++ {
 		value, _ := Remove([]byte(fmt.Sprintf("Key:%d", i)))
@@ -92,10 +89,7 @@ func TestPartition_Delete_Write_Read_CountVerify_WithFlush(t *testing.T) {
 	// override default constants
 	DefaultConstants.noOfPartitions = 1
 	DefaultConstants.memFlushWorker = DefaultConstants.noOfPartitions
-
-	if err := Open(); err != nil {
-		panic(err)
-	}
+	Open()
 
 	for i := 0; i < 1000; i++ {
 		value, _ := Remove([]byte(fmt.Sprintf("Key:%d", i)))
@@ -173,10 +167,7 @@ func TestPartition_Delete_Write_Read_CountVerify_Flush_With0FlushWorker(t *testi
 	DefaultConstants.noOfPartitions = 1
 	DefaultConstants.memFlushWorker = 0 //no flush worker
 	memFlushActive = 0
-
-	if err := Open(); err != nil {
-		panic(err)
-	}
+	Open()
 
 	for i := 0; i < 1000; i++ {
 		value, _ := Remove([]byte(fmt.Sprintf("Key:%d", i)))

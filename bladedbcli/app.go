@@ -11,9 +11,7 @@ import (
 
 func main() {
 	fmt.Println("process-id ", os.Getpid())
-	if openErr := bladedb.Open(); openErr != nil {
-		panic(openErr)
-	}
+	bladedb.Open()
 	address := fmt.Sprintf("0.0.0.0:%d", bladedb.DefaultConstants.ClientListenPort)
 	fmt.Println(fmt.Sprintf("starting bladedb server, listening on %s", address))
 	go server.StartServer(address)

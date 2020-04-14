@@ -17,11 +17,11 @@ type MemRec struct {
 	RecType byte
 }
 
-func NewMemStore() (*MemTable, error) {
+func NewMemStore() *MemTable {
 	memTable := &MemTable{
 		list: sklist.New(),
 	}
-	return memTable, nil
+	return memTable
 }
 
 func (memTable *MemTable) Insert(key []byte, value []byte, ts uint64, reqType byte) {

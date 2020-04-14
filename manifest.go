@@ -1,9 +1,7 @@
 package bladedb
 
 import (
-	"fmt"
 	"github.com/niubaoshu/gotiny"
-	"github.com/pkg/errors"
 	"io"
 	"os"
 	"sync"
@@ -40,7 +38,7 @@ var manifestFile *ManifestFile = nil
 func initManifest() error {
 	file, err := os.OpenFile(ManifestFileName, os.O_CREATE|os.O_RDWR|os.O_APPEND, os.ModePerm)
 	if err != nil {
-		return errors.Wrapf(err, "Error while opening or creating manifest file: %s", ManifestFileName)
+		return err
 	}
 	manifestFile = &ManifestFile{
 		file:     file,
@@ -48,7 +46,7 @@ func initManifest() error {
 	}
 	err = replay()
 	if err != nil {
-		return errors.Wrapf(err, "Error while replaying manifest file: %s", ManifestFileName)
+		return err
 	}
 	return nil
 }
@@ -106,7 +104,6 @@ func replay() error {
 		_, err := manifestFile.file.Read(buf)
 		if err != nil {
 			if err == io.EOF {
-				fmt.Println("manifest file read complete")
 				break
 			} else {
 				return err

@@ -13,17 +13,19 @@ type LogReader struct {
 	fileReader *bufio.Reader
 }
 
-func deleteLog(partitionId int, seqNum uint32) error {
-	fileName := LogDir + fmt.Sprintf(LogBaseFileName, seqNum, partitionId)
-	//fmt.Println(fmt.Sprintf("delete log file: %s", fileName))
-	return os.Remove(fileName)
+func deleteLog(partitionId int, seqNum uint32) {
+	fName := LogDir + fmt.Sprintf(LogBaseFileName, seqNum, partitionId)
+	if err := os.Remove(fName); err != nil && os.IsExist(err) { //TODO - check if file doesnt exists error log should not be there
+		defaultLogger.Error().Err(err).Msgf("Error while deleting logfile: %s", fName)
+	} else {
+		defaultLogger.Info().Msgf("logfile: %s deleted", fName)
+	}
 }
 
-func maxLogSeq(partId int) (uint32, error) {
+func maxLogSeq(partId int) uint32 {
 	maxLogSeq := uint32(0)
 	if manifestFile.manifest == nil {
-		fmt.Println("no manifest info to be loaded")
-		return maxLogSeq, nil
+		return maxLogSeq
 	}
 
 	for _, manifestRec := range manifestFile.manifest.logManifest[partId].manifestRecs {
@@ -31,13 +33,13 @@ func maxLogSeq(partId int) (uint32, error) {
 			maxLogSeq = manifestRec.seqNum
 		}
 	}
-	return maxLogSeq, nil
+	return maxLogSeq
 }
 
 //log files which were not successfully written to SST
 func (pInfo *PartitionInfo) loadUnclosedLogFile() error {
 	if manifestFile.manifest == nil {
-		fmt.Println("no unclosed wal files for partition: ", pInfo.partitionId)
+		defaultLogger.Info().Msgf("no unclosed log files for partition: %d", pInfo.partitionId)
 		return nil
 	}
 	unclosedFiles := make(map[uint32]ManifestRec)
@@ -48,12 +50,10 @@ func (pInfo *PartitionInfo) loadUnclosedLogFile() error {
 			unclosedFiles[manifestRec.seqNum] = manifestRec
 		}
 	}
-
-	fmt.Println(fmt.Sprintf("%d unclosed(undeleated) log files found", len(unclosedFiles)))
+	defaultLogger.Info().Msgf("%d unclosed log files found for partition: %d", len(unclosedFiles), pInfo.partitionId)
 	for _, unClosedFile := range unclosedFiles {
 		inactiveLogDetails, err := pInfo.loadLogFile(unClosedFile.seqNum)
 		if err != EmptyFile && err != nil {
-			panic(err)
 			return err
 		}
 		if inactiveLogDetails != nil {
@@ -75,13 +75,12 @@ func (pInfo *PartitionInfo) loadUnclosedLogFile() error {
 
 func (pInfo *PartitionInfo) loadLogFile(unClosedFileSeq uint32) (*InactiveLogDetails, error) {
 	logFile := LogDir + fmt.Sprintf(LogBaseFileName, unClosedFileSeq, pInfo.partitionId)
-	size := fileSize(logFile)
-	if size == 0 {
-		return nil, EmptyFile
+	_, err := fileSize(logFile)
+	if err != nil {
+		return nil, err
 	}
 	logBytes, err := ioutil.ReadFile(logFile)
 	if err != nil {
-		panic(err)
 		return nil, err
 	}
 
@@ -100,12 +99,12 @@ func (pInfo *PartitionInfo) loadLogFile(unClosedFileSeq uint32) (*InactiveLogDet
 		}
 
 		decodedLogRec := Decode(&offset, logBytes)
-		pInfo.memTable.Insert(decodedLogRec.Key(), decodedLogRec.Value(), decodedLogRec.ts, decodedLogRec.recType)
+		pInfo.memTable.Insert(decodedLogRec.key, decodedLogRec.value, decodedLogRec.ts, decodedLogRec.recType)
 		recsRecovered++
 	}
 	inactiveLogDetails.WriteOffset = offset
 	if offset == 0 {
-		fmt.Printf("recovered 0 bytes from %s unclosed wal file, marking it for delete", logFile)
+		defaultLogger.Info().Msgf("recovered 0 bytes from %s unclosed log file", logFile)
 		return inactiveLogDetails, nil
 	}
 
