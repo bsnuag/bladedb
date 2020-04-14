@@ -1,25 +1,22 @@
 package bladedb
 
 import (
-	"github.com/pkg/errors"
 	"runtime"
 )
 
-func Open() error {
+func Open() {
 	runtime.GOMAXPROCS(100)
+	setupLogger()
+
 	err := CreateDirectory(LogDir)
 	if err != nil {
-		return errors.Wrapf(err, "Error while creating directory: %s, error: %v", LogDir, err)
+		defaultLogger.Fatal().Err(err).Str("directory ", LogDir).Msg("Error while creating log directory")
 	}
 
 	err = CreateDirectory(SSTDir)
 	if err != nil {
-		return errors.Wrapf(err, "Error while creating directory: %s, error: %v", SSTDir, err)
+		defaultLogger.Fatal().Err(err).Str("directory ", SSTDir).Msg("Error while creating SST directory")
 
 	}
-
-	if err = PreparePartitionIdsMap(); err != nil {
-		return err
-	}
-	return nil
+	PreparePartitionIdsMap()
 }

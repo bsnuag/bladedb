@@ -19,8 +19,7 @@ func PrintPartitionStats() {
 			fmt.Println(fmt.Sprintf("In Level: %d, Number of SSTable: %d", l, len(lInfo.sstSeqNums)))
 			fmt.Println(fmt.Sprintf("In Level: %d, SSTable SeqNums: %v", l, lInfo.sstSeqNums))
 		}
-		var totalWrite uint64 = 0
-		var totalDelete uint64 = 0
+		var totalWrite, totalDelete uint32 = 0, 0
 		for num, reader := range pInfo.sstReaderMap {
 			fmt.Println(fmt.Sprintf("SST SeqNum: %d, Total Write: %d, Total Delete: %d", num,
 				reader.noOfWriteReq, reader.noOfDelReq))

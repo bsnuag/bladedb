@@ -7,6 +7,7 @@ import (
 	"golang.org/x/sync/errgroup"
 	"sync"
 	"sync/atomic"
+	"time"
 )
 
 var partitionInfoMap = make(map[int]*PartitionInfo)
@@ -44,44 +45,34 @@ type PartitionMeta struct {
 //TODO - dynamically decides partition and ranges
 
 // - it fills partitionId (that belongs to native node/machine) and corresponding details in a PartitionDetailsRec record
-func PreparePartitionIdsMap() error {
-
-	fmt.Println("Setting up DB")
-	initManifest()
+func PreparePartitionIdsMap() {
+	startT := time.Now()
+	defaultLogger.Info().Msg("setting up db")
+	err := initManifest()
+	if err != nil {
+		defaultLogger.Fatal().Err(err).Msg("Error while initiating manifest")
+	}
 
 	for partitionId := 0; partitionId < DefaultConstants.noOfPartitions; partitionId++ {
 
-		pInfo, err := NewPartition(partitionId)
-		if err != nil {
-			errors.Wrapf(err, "Error while creating new partition: %d", partitionId)
-		}
-
+		pInfo := NewPartition(partitionId)
 		partitionInfoMap[partitionId] = pInfo
 
-		maxSSTSeq, err := pInfo.loadActiveSSTs()
+		maxSSTSeq, err := pInfo.fillLevelInfo()
 		if err != nil {
-			fmt.Println(err)
-			return err
+			defaultLogger.Fatal().Err(err).Msgf("failed to load SSTs for partition: %d", partitionId)
 		}
-
-		maxLogSeq, err := maxLogSeq(partitionId)
-		if err != nil {
-			fmt.Println(err)
-			return err
-		}
+		maxLogSeq := maxLogSeq(partitionId)
 
 		pInfo.sstSeq = maxSSTSeq
 		pInfo.walSeq = maxLogSeq
 
 		nextLogSeq := pInfo.getNextLogSeq()
-		logWriter, err := newLogWriter(partitionId, nextLogSeq)
+		pInfo.logWriter, err = newLogWriter(partitionId, nextLogSeq)
 
 		if err != nil {
-			fmt.Println(err)
-			return err
+			defaultLogger.Fatal().Err(err).Msgf("failed to create new logfile for partition: %d", partitionId)
 		}
-
-		pInfo.logWriter = logWriter
 	}
 
 	loadDbStateGroup := errgroup.Group{}
@@ -91,36 +82,31 @@ func PreparePartitionIdsMap() error {
 		loadDbStateGroup.Go(func() error {
 			if err := pInfo.loadUnclosedLogFile(); err != nil {
 				return errors.Wrapf(err, "Error while loading unclosed log files from log-manifest: %v",
-					manifestFile.manifest.logManifest[pInfo.partitionId])
+					manifestFile.manifest.logManifest[pInfo.partitionId]) //verbose printing
 			}
 
 			sortedKeys := sortedKeys(pInfo.sstReaderMap)
 			for _, key := range sortedKeys {
 				reader := pInfo.sstReaderMap[key]
 				if _, err := (&reader).loadSSTRec(pInfo.index); err != nil {
-					return errors.Wrapf(err, "Error while loading index from active ssts : %v", pInfo.sstReaderMap)
+					return errors.Wrapf(err, "Error while loading index from SST : %s", reader.file.Name())
 				}
 			}
 			return nil
 		})
 	}
 	if err := loadDbStateGroup.Wait(); err != nil {
-		return errors.Wrap(err, "Error while setting up db")
+		defaultLogger.Fatal().Err(err).Msg("Error while setting up db")
 	}
-
-	fmt.Println("DB Setup Done")
+	defaultLogger.Info().Msgf("db setup completed, duration (Seconds): %f", time.Since(startT).Seconds())
 
 	activateMemFlushWorkers()
 	activateCompactWorkers()
 	flushPendingMemTables()
-	return nil
 }
 
-func NewPartition(partitionId int) (*PartitionInfo, error) {
-	memTable, err := memstore.NewMemStore()
-	if err != nil {
-		return nil, err
-	}
+func NewPartition(partitionId int) *PartitionInfo {
+	memTable := memstore.NewMemStore()
 	return &PartitionInfo{
 		readLock:           &sync.RWMutex{},
 		writeLock:          &sync.Mutex{},
@@ -134,7 +120,7 @@ func NewPartition(partitionId int) (*PartitionInfo, error) {
 		compactLock:        &sync.Mutex{},
 		sstSeq:             0,
 		walSeq:             0,
-	}, nil
+	}
 }
 func flushPendingMemTables() {
 	for _, pInfo := range partitionInfoMap {
@@ -191,7 +177,7 @@ func closeAllActiveSSTReaders() {
 //4. Once WAL is flushed, put all data into SST, add checkpoint in walstats file - Done
 
 func Drain() {
-	fmt.Println("drain called")
+	defaultLogger.Info().Msg("drain request received")
 	//1. TODO - Stop all accepting incoming db requests
 	for partitionId, pInfo := range partitionInfoMap {
 		fmt.Println(fmt.Sprintf("Closing all operation for partId: %d", partitionId))
@@ -218,28 +204,41 @@ func Drain() {
 //1. Flush WAL file, create another one
 //2. send inactive_memtable_log info event to flush mem queue
 func Flush() {
-	waitGroup := &sync.WaitGroup{}
+	defaultLogger.Info().Msg("Flush request received")
 
+	waitGroup := &sync.WaitGroup{}
 	waitGroup.Add(len(partitionInfoMap)) //THIS is just to flush in parallel
 	for _, pInfo := range partitionInfoMap {
 		go pInfo.flushPartition(waitGroup)
 	}
 	waitGroup.Wait()
 
-	fmt.Println(fmt.Sprintf("Flush and Rollover on request completed for all partitions"))
+	defaultLogger.Info().Msg("Flush completed for all partitions")
 }
 
 func (pInfo *PartitionInfo) flushPartition(wg *sync.WaitGroup) {
 	pInfo.writeLock.Lock()
-	fmt.Println(fmt.Sprintf("Flush and Rollover on request, partId: %d", pInfo.partitionId))
-	rolledOverLogDetails, err := pInfo.logWriter.FlushAndRollOver()
+	rolledOverLogDetails, err := pInfo.logWriter.rollover()
 	if err != nil {
-		panic(err)
+		defaultLogger.Error().Err(err).Msgf("Error while flushing partition: %d", pInfo.partitionId)
 	}
-	fmt.Println("rolledOverLogDetails1- ", rolledOverLogDetails)
 	if rolledOverLogDetails != nil && rolledOverLogDetails.WriteOffset > 0 {
 		pInfo.handleRolledOverLogDetails(rolledOverLogDetails)
 	}
 	pInfo.writeLock.Unlock()
 	wg.Done()
+}
+
+func (pInfo *PartitionInfo) updateActiveIndex() {
+	for tmpKeyHash, tmpIndexRec := range pInfo.activeCompaction.idx.index {
+		idxRec, ok := pInfo.index.Get(tmpKeyHash)
+		if !ok {
+			pInfo.index.Set(tmpKeyHash, tmpIndexRec)
+		} else {
+			if idxRec.TS > tmpIndexRec.TS { //if there is a latest write
+				continue
+			}
+			pInfo.index.Set(tmpKeyHash, tmpIndexRec)
+		}
+	}
 }

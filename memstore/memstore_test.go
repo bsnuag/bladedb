@@ -8,15 +8,15 @@ import (
 )
 
 func TestNewMemStoreCreate(t *testing.T) {
-	memStore, err := NewMemStore()
-	if memStore == nil || err != nil {
+	memStore := NewMemStore()
+	if memStore == nil {
 		panic("Error while creating new memstore")
 	}
 }
 
 func TestMemStoreInsert(t *testing.T) {
-	memStore, err := NewMemStore()
-	if memStore == nil || err != nil {
+	memStore := NewMemStore()
+	if memStore == nil {
 		panic("Error while creating new memstore")
 		return
 	}
@@ -31,8 +31,8 @@ func TestMemStoreInsert(t *testing.T) {
 }
 
 func TestMemStoreFind(t *testing.T) {
-	memStore, err := NewMemStore()
-	if memStore == nil || err != nil {
+	memStore := NewMemStore()
+	if memStore == nil {
 		panic("Error while creating new memstore")
 	}
 	//insert
@@ -59,7 +59,7 @@ func TestMemStoreFind(t *testing.T) {
 }
 
 func BenchmarkMemStoreInsert(b *testing.B) {
-	memTable, _ := NewMemStore()
+	memTable := NewMemStore()
 	for i := 0; i < b.N; i++ {
 		key := []byte(fmt.Sprintf("key%d", i))
 		value := []byte(fmt.Sprintf("value-%d", i))

@@ -28,7 +28,7 @@ func setupMemflushTest(partitionId int) func() {
 	SSTDir = dir
 
 	//setup partition
-	partitionInfoMap[partitionId], _ = NewPartition(partitionId)
+	partitionInfoMap[partitionId] = NewPartition(partitionId)
 	DefaultConstants.memFlushWorker = 3
 	DefaultConstants.compactWorker = 0
 	activateMemFlushWorkers()
@@ -150,7 +150,7 @@ func TestMemFlushWriteSSTAndIndex_SSTMeta(t *testing.T) {
 	//mark one key as delete
 	iLog1.MemTable.Insert([]byte("99Key_"), []byte(""), 1, DefaultConstants.deleteReq)
 
-	seqNum := partitionInfoMap[partitionId].writeSSTAndIndex(iLog1.MemTable.Recs())
+	seqNum,_ := partitionInfoMap[partitionId].writeSSTAndIndex(iLog1.MemTable.Recs())
 
 	//very results..
 	require.True(t, 1 == len(partitionInfoMap[partitionId].levelsInfo[0].sstSeqNums))
@@ -163,7 +163,7 @@ func TestMemFlushWriteSSTAndIndex_SSTMeta(t *testing.T) {
 
 func (pInfo *PartitionInfo) prepareMemFlushInput(start int, end int, reqType byte, ts uint64) InactiveLogDetails {
 	//Write data into mem and then flush it to sst
-	memTable, _ := memstore.NewMemStore()
+	memTable:= memstore.NewMemStore()
 
 	for i := start; i < end; i++ {
 		key := fmt.Sprintf("%dKey_", i)

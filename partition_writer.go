@@ -12,7 +12,7 @@ func Remove(key []byte) (value []byte, err error) {
 	pInfo := partitionInfoMap[partitionId]
 
 	if pInfo == nil {
-		return value, errors.New(fmt.Sprintf("partition doesn't exists for partition: %d, Key: %s ", partitionId, key))
+		return value, errors.Wrapf(err, "partition doesn't exists for partition: %d, Key: %s ", partitionId, key)
 	}
 
 	pInfo.writeLock.Lock()
@@ -22,11 +22,14 @@ func Remove(key []byte) (value []byte, err error) {
 	if err != nil {
 		return value, errors.Wrapf(err, "error while deleting key: %s", key)
 	}
+	if value == nil {
+		return nil, nil
+	}
 	ts := NanoTime()
 	inactiveLogDetails, err := pInfo.logWriter.Write(key, nil, ts, DefaultConstants.deleteReq)
 
 	if err != nil {
-		return value, errors.Wrapf(err, "error while deleting key: %s", key)
+		return value, errors.Wrapf(err, "error while deleting key: %v", key)
 	}
 
 	if inactiveLogDetails != nil && inactiveLogDetails.WriteOffset > 0 {
@@ -57,7 +60,7 @@ func Put(key []byte, valueByte []byte) error {
 	inactiveLogDetails, err := pInfo.logWriter.Write(key, valueByte, ts, DefaultConstants.writeReq)
 
 	if err != nil {
-		return errors.Wrap(err, "error while writing into db")
+		return errors.Wrapf(err, "error while writing key: %v, value: %v", key, valueByte)
 	}
 
 	if inactiveLogDetails != nil && inactiveLogDetails.WriteOffset > 0 {
@@ -74,15 +77,8 @@ func (pInfo *PartitionInfo) handleRolledOverLogDetails(inactiveLogDetails *Inact
 	pInfo.readLock.Lock()
 	defer pInfo.readLock.Unlock()
 
-	fmt.Println("inactiveLogDetails: ", inactiveLogDetails)
-
 	oldMemTable := pInfo.memTable
-
-	memTable, err := memstore.NewMemStore()
-	if err != nil {
-		panic(err)
-		return
-	}
+	memTable := memstore.NewMemStore()
 	pInfo.memTable = memTable //update active memtable to a new one
 
 	inactiveLogDetails.MemTable = oldMemTable
