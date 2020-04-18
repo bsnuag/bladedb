@@ -152,7 +152,7 @@ func (pInfo *PartitionInfo) writeSSTAndIndex(memRecs *sklist.SkipList) (uint32, 
 	defer pInfo.levelLock.Unlock()
 
 	pInfo.levelsInfo[levelNum].sstSeqNums[sstWriter.SeqNum] = struct{}{}
-	pInfo.sstReaderMap[sstWriter.SeqNum] = sstReader
+	pInfo.sstReaderMap[sstWriter.SeqNum] = &sstReader
 
 	return sstWriter.SeqNum, nil
 }

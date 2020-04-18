@@ -15,7 +15,7 @@ type LogReader struct {
 
 func deleteLog(partitionId int, seqNum uint32) {
 	fName := LogDir + fmt.Sprintf(LogBaseFileName, seqNum, partitionId)
-	if err := os.Remove(fName); err != nil && os.IsExist(err) { //TODO - check if file doesnt exists error log should not be there
+	if err := os.Remove(fName); err != nil && os.IsExist(err) {
 		defaultLogger.Error().Err(err).Msgf("Error while deleting logfile: %s", fName)
 	} else {
 		defaultLogger.Info().Msgf("logfile: %s deleted", fName)

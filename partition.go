@@ -30,7 +30,7 @@ type PartitionInfo struct {
 
 	levelLock    *sync.RWMutex
 	levelsInfo   map[int]*LevelInfo
-	sstReaderMap map[uint32]SSTReader
+	sstReaderMap map[uint32]*SSTReader
 
 	compactLock      *sync.Mutex
 	activeCompaction *CompactInfo
@@ -88,7 +88,7 @@ func PreparePartitionIdsMap() {
 			sortedKeys := sortedKeys(pInfo.sstReaderMap)
 			for _, key := range sortedKeys {
 				reader := pInfo.sstReaderMap[key]
-				if _, err := (&reader).loadSSTRec(pInfo.index); err != nil {
+				if _, err := reader.loadSSTRec(pInfo.index); err != nil {
 					return errors.Wrapf(err, "Error while loading index from SST : %s", reader.file.Name())
 				}
 			}
@@ -115,7 +115,7 @@ func NewPartition(partitionId int) *PartitionInfo {
 		index:              NewIndex(),
 		memTable:           memTable,
 		inactiveLogDetails: make([]*InactiveLogDetails, 0, 10), //expecting max of 10 inactive memtable
-		sstReaderMap:       make(map[uint32]SSTReader),
+		sstReaderMap:       make(map[uint32]*SSTReader),
 		levelLock:          &sync.RWMutex{},
 		compactLock:        &sync.Mutex{},
 		sstSeq:             0,
