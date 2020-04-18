@@ -7,6 +7,7 @@ import (
 	"io/ioutil"
 	"log"
 	"os"
+	"strings"
 	"testing"
 	"time"
 )
@@ -31,7 +32,7 @@ func TestKeyRange(t *testing.T) {
 
 func TestFillLevels_level0WithOverlap(t *testing.T) {
 	partId := 0
-	pInfo:= NewPartition(partId)
+	pInfo := NewPartition(partId)
 
 	lInfo0 := pInfo.levelsInfo[0]
 	lInfo0.sstSeqNums[123] = struct{}{}
@@ -52,22 +53,6 @@ func TestFillLevels_level0WithOverlap(t *testing.T) {
 	compactInfo := initCompactInfo(0, partId)
 	sKey, eKey := compactInfo.fillLevels()
 
-	/*fmt.Println("----")
-
-	fmt.Println("compaction selected key-range -> "+sKey+" : ", eKey)
-
-	fmt.Println("\nbot level SST infos - ")
-	for _, reader := range compactInfo.botLevelSST {
-		fmt.Println("\nseqNum - ", reader.SeqNm)
-		fmt.Println("sKey - " + string(reader.startKey))
-		fmt.Println("eKey - " + string(reader.endKey))
-	}
-	fmt.Println("\ntop level SST infos - ")
-	for _, reader := range compactInfo.topLevelSST {
-		fmt.Println("\nseqNum - ", reader.SeqNm)
-		fmt.Println("sKey - " + string(reader.startKey))
-		fmt.Println("eKey - " + string(reader.endKey))
-	}*/
 	require.Equal(t, "200", sKey, "start key should be 200")
 	require.Equal(t, "300", eKey, "start key should be 300")
 	require.Equal(t, 2, len(compactInfo.botLevelSST), "2 ssts should be picked up from bottom level")
@@ -88,29 +73,10 @@ func TestFillLevels_level0WithNoLevel1Data(t *testing.T) {
 	pInfo.sstReaderMap[124] = tempSSTReader("270", "300", 124, 0, 14)
 	pInfo.sstReaderMap[125] = tempSSTReader("998", "999", 125, 0, 101)
 
-	//fmt.Println(pInfo.levelsInfo[0])
-	//fmt.Println(pInfo.levelsInfo[1])
 	partitionInfoMap[0] = pInfo
 
 	compactInfo := initCompactInfo(0, partId)
 	sKey, eKey := compactInfo.fillLevels()
-
-	//fmt.Println("----")
-	//
-	//fmt.Println("compaction selected key-range -> "+sKey+" : ", eKey)
-	//
-	//fmt.Println("\nbot level SST infos - ")
-	//for _, reader := range compactInfo.botLevelSST {
-	//	fmt.Println("\nseqNum - ", reader.SeqNm)
-	//	fmt.Println("sKey - " + string(reader.startKey))
-	//	fmt.Println("eKey - " + string(reader.endKey))
-	//}
-	//fmt.Println("\ntop level SST infos - ")
-	//for _, reader := range compactInfo.topLevelSST {
-	//	fmt.Println("\nseqNum - ", reader.SeqNm)
-	//	fmt.Println("sKey - " + string(reader.startKey))
-	//	fmt.Println("eKey - " + string(reader.endKey))
-	//}
 
 	require.Equal(t, "200", sKey, "start key should be 200")
 	require.Equal(t, "999", eKey, "start key should be 999")
@@ -121,7 +87,7 @@ func TestFillLevels_level0WithNoLevel1Data(t *testing.T) {
 
 func TestFillLevels_level1WithNoLevel2Data(t *testing.T) {
 	partId := 0
-	pInfo:= NewPartition(partId)
+	pInfo := NewPartition(partId)
 
 	//Level 1 have only 3 sst which is lower than levelMaxSST[1] - this should be taken care when compactionInfo is being pushed to compactQueue
 	pInfo.levelsInfo[1].sstSeqNums[123] = struct{}{}
@@ -137,22 +103,6 @@ func TestFillLevels_level1WithNoLevel2Data(t *testing.T) {
 	compactInfo := initCompactInfo(1, partId)
 	sKey, eKey := compactInfo.fillTopLevels()
 
-	/*fmt.Println("----")
-
-	fmt.Println("compaction selected key-range -> "+sKey+" : ", eKey)
-
-	fmt.Println("\nbot level SST infos - ")
-	for _, reader := range compactInfo.botLevelSST {
-		fmt.Println("\nseqNum - ", reader.SeqNm)
-		fmt.Println("sKey - " + string(reader.startKey))
-		fmt.Println("eKey - " + string(reader.endKey))
-	}
-	fmt.Println("\ntop level SST infos - ")
-	for _, reader := range compactInfo.topLevelSST {
-		fmt.Println("\nseqNum - ", reader.SeqNm)
-		fmt.Println("sKey - " + string(reader.startKey))
-		fmt.Println("eKey - " + string(reader.endKey))
-	}*/
 	require.Equal(t, "", sKey, "level 1 has only 3 files i.e. less than levelMaxSST, compaction not possible")
 	require.Equal(t, "", eKey, "level 1 has only 3 files i.e. less than levelMaxSST, compaction not possible")
 	require.Equal(t, 0, len(compactInfo.botLevelSST), "level 1 has only 3 files i.e. less than levelMaxSST, no file should be picked up for compaction")
@@ -183,22 +133,6 @@ func TestFillLevels_level1WithOverlap(t *testing.T) {
 	compactInfo := initCompactInfo(level, partId)
 	sKey, eKey := compactInfo.fillTopLevels()
 
-	/*fmt.Println("----")
-
-	fmt.Println("compaction selected key-range -> "+sKey+" : ", eKey)
-
-	fmt.Println("\nbot level SST infos - ")
-	for _, reader := range compactInfo.botLevelSST {
-		fmt.Println("\nseqNum - ", reader.SeqNm)
-		fmt.Println("sKey - " + string(reader.startKey))
-		fmt.Println("eKey - " + string(reader.endKey))
-	}
-	fmt.Println("\ntop level SST infos - ")
-	for _, reader := range compactInfo.topLevelSST {
-		fmt.Println("\nseqNum - ", reader.SeqNm)
-		fmt.Println("sKey - " + string(reader.startKey))
-		fmt.Println("eKey - " + string(reader.endKey))
-	}*/
 	require.Equal(t, "200", sKey, "start key should be 200")
 	require.Equal(t, "300", eKey, "start key should be 300")
 	require.Equal(t, 2, len(compactInfo.botLevelSST), "2 ssts should be picked up from bottom level")
@@ -228,22 +162,6 @@ func TestFillLevels_level1WithOverlapButNoLevel2Data(t *testing.T) {
 	compactInfo := initCompactInfo(level, partId)
 	sKey, eKey := compactInfo.fillTopLevels()
 
-	/*fmt.Println("----")
-
-	fmt.Println("compaction selected key-range -> "+sKey+" : ", eKey)
-
-	fmt.Println("\nbot level SST infos - ")
-	for _, reader := range compactInfo.botLevelSST {
-		fmt.Println("\nseqNum - ", reader.SeqNm)
-		fmt.Println("sKey - " + string(reader.startKey))
-		fmt.Println("eKey - " + string(reader.endKey))
-	}
-	fmt.Println("\ntop level SST infos - ")
-	for _, reader := range compactInfo.topLevelSST {
-		fmt.Println("\nseqNum - ", reader.SeqNm)
-		fmt.Println("sKey - " + string(reader.startKey))
-		fmt.Println("eKey - " + string(reader.endKey))
-	}*/
 	require.Equal(t, "200", sKey, "start key should be 200")
 	require.Equal(t, "999", eKey, "start key should be 999")
 	require.Equal(t, 3, len(compactInfo.botLevelSST), "3 ssts should be picked up from bottom level")
@@ -251,8 +169,8 @@ func TestFillLevels_level1WithOverlapButNoLevel2Data(t *testing.T) {
 	require.Equal(t, 0, compactInfo.heap.Len(), "heap length should be zero")
 }
 
-func tempSSTReader(sKey string, eKey string, seqNum uint32, delReq uint32, writeReq uint32) SSTReader {
-	return SSTReader{
+func tempSSTReader(sKey string, eKey string, seqNum uint32, delReq uint32, writeReq uint32) *SSTReader {
+	return &SSTReader{
 		file:         nil,
 		SeqNm:        seqNum,
 		partitionId:  0,
@@ -264,31 +182,18 @@ func tempSSTReader(sKey string, eKey string, seqNum uint32, delReq uint32, write
 }
 
 func TestOverlap(t *testing.T) {
-
-	b1 := overlap("1", "5", "10", "6")
-	b2 := overlap("1", "10", "12", "8")
-	b3 := overlap("12", "8", "1", "10")
-	b4 := overlap("4", "12", "9", "20")
-	b5 := overlap("1", "12", "4", "7")
+	b1 := overlap("11", "55", "10", "66")
+	require.True(t, b1)
+	b2 := overlap("11", "19", "12", "8")
+	require.True(t, b2)
+	b3 := overlap("12", "78", "1", "10")
+	require.False(t, b3)
+	b4 := overlap("41", "49", "91", "99")
+	require.False(t, b4)
 	b6 := overlap("200", "999", "222", "666")
+	require.True(t, b6)
 	b7 := overlap("200", "250", "270", "300")
-
-	fmt.Println(b1)
-	fmt.Println(b2)
-	fmt.Println(b3)
-	fmt.Println(b4)
-	fmt.Println(b5)
-	fmt.Println(b6)
-	fmt.Println(b7)
-	/*require.False(t, b1, "should have been false")
-	require.False(t, b2, "should have been false")
-	require.False(t, b3, "should have been true")
-	require.False(t, b4, "should have been true")
-	require.False(t, b5, "should have been true")
-	require.True(t, b6, "should have been true")
-	require.False(t, b7, "should have been false")*/
-
-	//TODO - write some true cases
+	require.False(t, b7)
 }
 
 func TestBuildCompactionBaseLevelAs1(t *testing.T) {
@@ -309,20 +214,20 @@ func TestBuildCompactionBaseLevelAs1(t *testing.T) {
 	partitionInfoMap[partitionId].walSeq = 0
 
 	compactInfo := initCompactInfo(1, partitionId)
-	sReader1, sReader2 := prepareInputSSTs(dir, partitionId)
+	sReader1, sReader2 := prepareInputSSTs(dir, partitionId, 0)
 
 	defer os.Remove(mFile.Name())
 	defer os.Remove(sReader1.file.Name())
 	defer os.Remove(sReader2.file.Name())
 	defer os.RemoveAll(dir)
 
-	compactInfo.botLevelSST = append(compactInfo.botLevelSST, sReader1, sReader2)
+	compactInfo.botLevelSST = append(compactInfo.botLevelSST, &sReader1, &sReader2)
 	//update bottom level reader map
 	partitionInfoMap[partitionId].levelsInfo[1].sstSeqNums[sReader1.SeqNm] = struct{}{}
 	partitionInfoMap[partitionId].levelsInfo[1].sstSeqNums[sReader2.SeqNm] = struct{}{}
 
-	partitionInfoMap[partitionId].sstReaderMap[sReader1.SeqNm] = sReader1
-	partitionInfoMap[partitionId].sstReaderMap[sReader2.SeqNm] = sReader2
+	partitionInfoMap[partitionId].sstReaderMap[sReader1.SeqNm] = &sReader1
+	partitionInfoMap[partitionId].sstReaderMap[sReader2.SeqNm] = &sReader2
 
 	compactInfo.compact()
 	replay() //manifest replay
@@ -348,17 +253,40 @@ func TestBuildCompactionBaseLevelAs0(t *testing.T) {
 	if err != nil {
 		log.Fatal(err)
 	}
+	//initiate manifestFile
+	mFile, err := ioutil.TempFile(dir, "MANIFEST.*.txt")
+	manifestFile = &ManifestFile{
+		file: mFile,
+	}
+
 	SSTDir = dir
 	partitionInfoMap[partitionId] = NewPartition(partitionId)
 	partitionInfoMap[partitionId].sstSeq = 100
 	partitionInfoMap[partitionId].walSeq = 0
-
 	compactInfo := initCompactInfo(0, partitionId)
-	sReader1, sReader2 := prepareInputSSTs(dir, partitionId)
-	compactInfo.botLevelSST = append(compactInfo.botLevelSST, sReader1, sReader2)
+	partitionInfoMap[partitionId].activeCompaction = compactInfo
 
+	sReader1, sReader2 := prepareInputSSTs(dir, partitionId, 0)
+	compactInfo.botLevelSST = append(compactInfo.botLevelSST, &sReader1, &sReader2)
+
+	sReader3, sReader4 := prepareInputSSTs(dir, partitionId, 2)
+	compactInfo.topLevelSST = append(compactInfo.topLevelSST, &sReader3, &sReader4)
+
+	partitionInfoMap[partitionId].sstReaderMap[sReader1.SeqNm] = &sReader1 //update sstreader map
+	partitionInfoMap[partitionId].sstReaderMap[sReader2.SeqNm] = &sReader2
+	partitionInfoMap[partitionId].levelsInfo[0].sstSeqNums[0] = struct{}{}
+	partitionInfoMap[partitionId].levelsInfo[0].sstSeqNums[1] = struct{}{}
+
+	partitionInfoMap[partitionId].sstReaderMap[sReader3.SeqNm] = &sReader3
+	partitionInfoMap[partitionId].sstReaderMap[sReader4.SeqNm] = &sReader4
+	partitionInfoMap[partitionId].levelsInfo[1].sstSeqNums[2] = struct{}{}
+	partitionInfoMap[partitionId].levelsInfo[1].sstSeqNums[3] = struct{}{}
+
+	defer os.Remove(mFile.Name())
 	defer os.Remove(sReader1.file.Name())
-	defer os.Remove(sReader2.file.Name())
+	defer os.Remove(sReader1.file.Name())
+	defer os.Remove(sReader3.file.Name())
+	defer os.Remove(sReader4.file.Name())
 	defer os.RemoveAll(dir)
 
 	compactInfo.compact()
@@ -377,17 +305,78 @@ func TestBuildCompactionBaseLevelAs0(t *testing.T) {
 		}
 		break
 	}
-	for i := 0; i < len(actualKeyOrder)-1; i++ {
+	for i := 0; i < len(actualKeyOrder)-1; i++ { //check if new sst is in sorted order
 		require.LessOrEqual(t, actualKeyOrder[i], actualKeyOrder[i+1], "keys(from compaction heap) must be in sorted order")
 	}
 	require.Equal(t, 10, compactInfo.idx.Size(), "Expecting 10 entries (non-deleted) in index post compaction")
 	require.Equal(t, 25, sstRecCount, "Expecting 25 recs in new sst post compaction")
+	require.Equal(t, 0, partitionInfoMap[partitionId].index.Size(), "expecting 0 index size")
+
+	partitionInfoMap[partitionId].updatePartition()
+
+	_, e1 := fileSize(sReader1.file.Name())
+	_, e2 := fileSize(sReader2.file.Name())
+	_, e3 := fileSize(sReader3.file.Name())
+	_, e4 := fileSize(sReader4.file.Name())
+
+	require.True(t, len(partitionInfoMap[partitionId].sstReaderMap) == 1, "post compaction expecting readers map size 1")
+	require.True(t, partitionInfoMap[partitionId].index.Size() == 10, "post compaction expecting index size 10")
+	require.True(t, len(partitionInfoMap[partitionId].levelsInfo[0].sstSeqNums) == 0, "level info should be updated post compaction/update partition")
+	require.True(t, len(partitionInfoMap[partitionId].levelsInfo[1].sstSeqNums) == 1, "level info should be updated post compaction/update partition")
+	require.True(t, len(partitionInfoMap[partitionId].levelsInfo[2].sstSeqNums) == 0, "level info should be updated post compaction/update partition")
+	require.False(t, os.IsExist(e1) || os.IsExist(e2) || os.IsExist(e3) || os.IsExist(e4), "post compaction ssts should be deleted")
+
+	for _, iRec := range partitionInfoMap[partitionId].index.index {
+		require.True(t, iRec.SSTFileSeqNum == 101) //new sst - 101
+	}
+	replay()
+	for _, mRec := range manifestFile.manifest.sstManifest[partitionId].manifestRecs {
+		require.True(t, mRec.seqNum == 0 || mRec.seqNum == 1 || mRec.seqNum == 2 || mRec.seqNum == 3 || mRec.seqNum == 101) //deleted sst seqnums (0,1,2,3) & new sst - 101
+		require.True(t, mRec.levelNum == 0 || mRec.levelNum == 1)
+		require.True(t, mRec.fileType == DefaultConstants.sstFileType)
+	}
+	require.Equal(t, 5, len(manifestFile.manifest.sstManifest[partitionId].manifestRecs), "sstManifest length should be five")
 }
 
-func prepareInputSSTs(dir string, partitionId int) (SSTReader, SSTReader) {
+func TestHeapIterator(t *testing.T) {
+	partitionId := 0
+	dir, err := ioutil.TempDir("", "buildHeapTest")
+	if err != nil {
+		log.Fatal(err)
+	}
+
 	SSTDir = dir
-	sstWriter1, _ := NewSSTWriter(partitionId, 0)
-	sstWriter2, _ := NewSSTWriter(partitionId, 1)
+	partitionInfoMap[partitionId] = NewPartition(partitionId)
+	partitionInfoMap[partitionId].sstSeq = 100
+	partitionInfoMap[partitionId].walSeq = 0
+	compactInfo := initCompactInfo(0, partitionId)
+
+	sReader1, sReader2 := prepareInputSSTs(dir, partitionId, 0)
+	compactInfo.topLevelSST = append(compactInfo.topLevelSST, &sReader1, &sReader2)
+	sReader3, sReader4 := prepareInputSSTs(dir, partitionId, 2)
+	compactInfo.botLevelSST = append(compactInfo.botLevelSST, &sReader3, &sReader4)
+
+	defer os.Remove(sReader1.file.Name())
+	defer os.Remove(sReader1.file.Name())
+	defer os.RemoveAll(dir)
+
+	compactInfo.buildHeap()
+	expectedOrder := []string{"0Key_", "10Key_", "11Key_", "12Key_", "13Key_", "14Key_", "15Key_", "16Key_", "17Key_", "18Key_",
+		"19Key_", "1Key_", "20Key_", "21Key_", "22Key_", "23Key_", "24Key_", "2Key_", "3Key_", "4Key_", "5Key_", "6Key_", "7Key_", "8Key_", "9Key_"}
+	idx := 0
+	for compactInfo.heap.Len() > 0 {
+		ok, rec := compactInfo.nextRec()
+		if ok {
+			strings.EqualFold(expectedOrder[idx], string(rec.key))
+			idx++
+		}
+	}
+	require.Equal(t, len(expectedOrder), idx)
+}
+func prepareInputSSTs(dir string, partitionId int, seqNum uint32) (SSTReader, SSTReader) {
+	SSTDir = dir
+	sstWriter1, _ := NewSSTWriter(partitionId, seqNum)
+	sstWriter2, _ := NewSSTWriter(partitionId, seqNum+1)
 	//Write data into mem and then flush it to sst
 	sKe1 := ""
 	eKey1 := ""
@@ -412,7 +401,6 @@ func prepareInputSSTs(dir string, partitionId int) (SSTReader, SSTReader) {
 			sKe1 = string(key)
 		}
 		eKey1 = string(key)
-		//fmt.Println(fmt.Sprintf("Key: %s, time: %d", string(mRec.Key), mRec.TS))
 		iterator.Next()
 	}
 
@@ -439,7 +427,6 @@ func prepareInputSSTs(dir string, partitionId int) (SSTReader, SSTReader) {
 			sKey2 = string(key)
 		}
 		eKey2 = string(key)
-		//fmt.Println(fmt.Sprintf("Key: %s, time: %d", string(mRec.Key), mRec.TS))
 		iterator.Next()
 	}
 	sstWriter1.FlushAndClose()

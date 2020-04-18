@@ -18,7 +18,7 @@ func TestSSTReadRec(t *testing.T) {
 	}
 	// update SSTDir to temp directory
 	SSTDir = dir
-	sReader1, sReader2 := prepareInputSSTs(dir, partitionId)
+	sReader1, sReader2 := prepareInputSSTs(dir, partitionId, 0)
 	//sReader1 writeReq - 0Key_ to 19Key_
 	//sReader2 writeDel - 10Key_ to 24Key_
 	defer os.Remove(sReader1.file.Name())
@@ -42,7 +42,7 @@ func TestLoadSSTRec_Mix_Delele_And_Write(t *testing.T) {
 	SSTDir = dir
 	index := NewIndex()
 
-	sReader1, sReader2 := prepareInputSSTs(dir, partitionId)
+	sReader1, sReader2 := prepareInputSSTs(dir, partitionId, 0)
 	//sReader1 writeReq - 0Key_ to 19Key_
 	//sReader2 writeDel - 10Key_ to 24Key_
 	defer os.Remove(sReader1.file.Name())
@@ -53,16 +53,9 @@ func TestLoadSSTRec_Mix_Delele_And_Write(t *testing.T) {
 	sReader2.loadSSTRec(index)
 
 	expectedIndexKeys := make(map[string]interface{}, 1)
-	expectedIndexKeys["0Key_"] = struct{}{}
-	expectedIndexKeys["1Key_"] = struct{}{}
-	expectedIndexKeys["2Key_"] = struct{}{}
-	expectedIndexKeys["3Key_"] = struct{}{}
-	expectedIndexKeys["4Key_"] = struct{}{}
-	expectedIndexKeys["5Key_"] = struct{}{}
-	expectedIndexKeys["6Key_"] = struct{}{}
-	expectedIndexKeys["7Key_"] = struct{}{}
-	expectedIndexKeys["8Key_"] = struct{}{}
-	expectedIndexKeys["9Key_"] = struct{}{}
+	for i := 0; i <= 9; i++ {
+		expectedIndexKeys[fmt.Sprintf("%dKey_", i)] = struct{}{}
+	}
 	//fmt.Println(len(index.index))
 	require.True(t, index.Size() == len(expectedIndexKeys),
 		fmt.Sprintf("Expected %d numbers of keys in index", index.Size()))
@@ -84,7 +77,7 @@ func TestLoadSSTRec_Only_Write(t *testing.T) {
 	SSTDir = dir
 	index := NewIndex()
 
-	sReader1, sReader2 := prepareInputSSTs(dir, partitionId)
+	sReader1, sReader2 := prepareInputSSTs(dir, partitionId, 0)
 	//sReader1 writeReq - 0Key_ to 19Key_
 	defer os.Remove(sReader1.file.Name())
 	defer os.Remove(sReader2.file.Name())
@@ -119,7 +112,7 @@ func TestLoadSSTRec_Only_Delete(t *testing.T) {
 	SSTDir = dir
 	index := NewIndex()
 
-	sReader1, sReader2 := prepareInputSSTs(dir, partitionId)
+	sReader1, sReader2 := prepareInputSSTs(dir, partitionId, 0)
 	//sReader1 deleteReq - 10Key_ to 24Key_
 	defer os.Remove(sReader1.file.Name())
 	defer os.Remove(sReader2.file.Name())

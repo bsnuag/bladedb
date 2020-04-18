@@ -42,7 +42,7 @@ func (pInfo *PartitionInfo) fillLevelInfo() (uint32, error) {
 			} else if err != nil {
 				return maxSSTSeq, err
 			}
-			pInfo.sstReaderMap[sstSeqNum] = reader
+			pInfo.sstReaderMap[sstSeqNum] = &reader
 		}
 	}
 	return maxSSTSeq, nil
