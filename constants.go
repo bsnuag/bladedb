@@ -45,7 +45,7 @@ var DefaultConstants = Constants{
 	logFileType:         0,
 	sstFileType:         1,
 	logFileStartOffset:  0,
-	walFlushPeriodInSec: 10,
+	walFlushPeriodInSec: time.Second * 10,
 	maxLevel:            6,
 	noOfPartitions:      32,
 	maxSSTSize:          64e+6, //64 MB

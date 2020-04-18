@@ -11,6 +11,7 @@ import (
 )
 
 var partitionInfoMap = make(map[int]*PartitionInfo)
+var walFlushQueue = make(chan bool)
 
 type PartitionInfo struct {
 	readLock  *sync.RWMutex //1. (WLock)Modifying MemTable during write  2. (RLock) Reading MemTable & Index
@@ -102,6 +103,7 @@ func PreparePartitionIdsMap() {
 	activateMemFlushWorkers()
 	activateCompactWorkers()
 	flushPendingMemTables()
+	activatePeriodicWalFlush()
 }
 
 func NewPartition(partitionId int) *PartitionInfo {
@@ -128,28 +130,30 @@ func flushPendingMemTables() {
 	}
 }
 
-//TODO - implement this post profiling if required
-/*func (pInfo *PartitionInfo) activatePeriodicWalFlush() {
+func activatePeriodicWalFlush() {
 	ticker := time.NewTicker(DefaultConstants.walFlushPeriodInSec)
 	go func() {
 		for {
 			select {
 			case <-ticker.C:
-				pInfo.writeLock.Lock()
-				fmt.Println("Ticked to flush wal file for partId: ", pInfo.partitionId)
-				if err := pInfo.logWriter.FlushAndSync(); err != nil {
-					fmt.Println("Error while flushing wal file for partId: ", pInfo.partitionId)
-					panic(err)
+				for _, pInfo := range partitionInfoMap {
+					pInfo.writeLock.Lock()
+					defaultLogger.Info().Int("PartitionId", pInfo.partitionId).Msg("synced log file")
+					if err := pInfo.logWriter.FlushAndSync(); err != nil {
+						defaultLogger.Error().Err(err).
+							Int("PartitionId", pInfo.partitionId).
+							Msg("error while syncing log file")
+					}
+					pInfo.writeLock.Unlock()
 				}
-				pInfo.writeLock.Unlock()
-				//case <-pInfo.walFlushQueue:
-				//	fmt.Println("Received Req to stop periodic WAL flush for partId: ", pInfo.partitionId)
-				//	ticker.Stop()
-				//	return
+			case <-walFlushQueue:
+				defaultLogger.Info().Msg("received signal to stop log file sync forever")
+				ticker.Stop()
+				return
 			}
 		}
 	}()
-}*/
+}
 
 func (pInfo *PartitionInfo) getNextSSTSeq() uint32 {
 	return atomic.AddUint32(&pInfo.sstSeq, 1)
@@ -177,12 +181,14 @@ func closeAllActiveSSTReaders() {
 func Drain() {
 	defaultLogger.Info().Msg("drain request received")
 	//1. TODO - Stop all accepting incoming db requests
+	walFlushQueue <- true
 	for partitionId, pInfo := range partitionInfoMap {
-		fmt.Println(fmt.Sprintf("Closing all operation for partId: %d", partitionId))
+		defaultLogger.Info().Int("partitionId", partitionId).Msg("draining...")
 		//3rd point
 		rolledOverLogDetails, logFlushErr := pInfo.logWriter.FlushAndClose()
 		if logFlushErr != nil {
-			panic(logFlushErr)
+			defaultLogger.Error().Err(logFlushErr).
+				Int("partitionId", partitionId).Msg("error while closing logwriter")
 		}
 		//4th point
 		if rolledOverLogDetails != nil && rolledOverLogDetails.WriteOffset > 0 {
