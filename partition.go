@@ -28,7 +28,6 @@ type PartitionInfo struct {
 	// should have which wal file it's a part of,
 	// flush should happen without blocking others for long time
 
-	levelLock    *sync.RWMutex
 	levelsInfo   map[int]*LevelInfo
 	sstReaderMap map[uint32]*SSTReader
 
@@ -116,7 +115,6 @@ func NewPartition(partitionId int) *PartitionInfo {
 		memTable:           memTable,
 		inactiveLogDetails: make([]*InactiveLogDetails, 0, 10), //expecting max of 10 inactive memtable
 		sstReaderMap:       make(map[uint32]*SSTReader),
-		levelLock:          &sync.RWMutex{},
 		compactLock:        &sync.Mutex{},
 		sstSeq:             0,
 		walSeq:             0,

@@ -67,6 +67,7 @@ func (compactInfo *CompactInfo) compactFileNames() (botLevelSSTNames []string, t
 }
 
 func (pInfo PartitionInfo) activateNewSSTs() (manifestRecs []ManifestRec) {
+	pInfo.readLock.Lock()
 	compactInfo := pInfo.activeCompaction
 	for _, newReader := range compactInfo.newSSTReaders {
 		mf1 := ManifestRec{
@@ -80,5 +81,6 @@ func (pInfo PartitionInfo) activateNewSSTs() (manifestRecs []ManifestRec) {
 		pInfo.sstReaderMap[newReader.SeqNm] = newReader
 		pInfo.levelsInfo[compactInfo.nextLevel].sstSeqNums[newReader.SeqNm] = struct{}{}
 	}
+	pInfo.readLock.Unlock()
 	return manifestRecs
 }

@@ -148,8 +148,11 @@ func (pInfo *PartitionInfo) writeSSTAndIndex(memRecs *sklist.SkipList) (uint32, 
 	sstReader.noOfDelReq = noOfDelReq
 
 	//update sstReader map
-	pInfo.levelLock.Lock()
-	defer pInfo.levelLock.Unlock()
+	//pInfo.levelLock.Lock()
+	//defer pInfo.levelLock.Unlock()
+
+	pInfo.readLock.Lock()
+	defer pInfo.readLock.Unlock()
 
 	pInfo.levelsInfo[levelNum].sstSeqNums[sstWriter.SeqNum] = struct{}{}
 	pInfo.sstReaderMap[sstWriter.SeqNum] = &sstReader

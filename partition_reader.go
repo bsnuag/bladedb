@@ -50,9 +50,9 @@ func Get(key []byte) ([]byte, error) {
 }
 
 func (pInfo *PartitionInfo) readFromSST(sNum uint32, offset uint32) (SSTRec, error) {
-	pInfo.levelLock.RLock()
-	defer pInfo.levelLock.RUnlock()
-
+	//pInfo.levelLock.RLock()
+	//defer pInfo.levelLock.RUnlock()
+	//
 	sstReader, ok := pInfo.sstReaderMap[sNum]
 	if !ok {
 		return SSTRec{}, errors.New(fmt.Sprintf("Could not find sstReader for seqNum %d, partition %d ",

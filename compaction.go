@@ -266,13 +266,13 @@ func (compactInfo *CompactInfo) compact() error {
 //3. remove compacted sst's from active sstReaderMap
 //4. write manifest
 func (pInfo *PartitionInfo) updatePartition() {
-	pInfo.levelLock.Lock()
+	//pInfo.levelLock.Lock()
 	compactInfo := pInfo.activeCompaction
 	manifestRecs := make([]ManifestRec, 0, len(compactInfo.newSSTReaders)+len(compactInfo.botLevelSST)+len(compactInfo.topLevelSST))
 	//update active sstReaderMap with newly created ssts
 	newSSTManifests := pInfo.activateNewSSTs()
 	manifestRecs = append(manifestRecs, newSSTManifests...)
-	pInfo.levelLock.Unlock()
+	//pInfo.levelLock.Unlock()
 
 	//update active index with new index data (new ssts)
 	pInfo.updateActiveIndex()
@@ -285,7 +285,8 @@ func (pInfo *PartitionInfo) updatePartition() {
 	}
 	//deleteReaders := make([]SSTReader, 0, len(compactInfo.botLevelSST)+len(compactInfo.topLevelSST))
 	//remove compacted sst's from active sstReaderMap
-	pInfo.levelLock.Lock()
+	//pInfo.levelLock.Lock()
+	pInfo.readLock.Lock()
 	thisLevelInfo := pInfo.levelsInfo[compactInfo.thisLevel]
 	nextLevelInfo := pInfo.levelsInfo[compactInfo.nextLevel]
 	for _, reader := range compactInfo.botLevelSST {
@@ -319,7 +320,8 @@ func (pInfo *PartitionInfo) updatePartition() {
 		defer deleteReadersFun(reader)
 		manifestRecs = append(manifestRecs, mf1)
 	}
-	pInfo.levelLock.Unlock()
+	//pInfo.levelLock.Unlock()
+	pInfo.readLock.Unlock()
 	writeManifest(manifestRecs) //TODO - check for consistent - can we name sst and temp and post manifest write confirm it to permanent
 	/*for _, reader := range deleteReaders {
 		err := deleteSST(reader.partitionId, reader.SeqNm)
@@ -375,8 +377,11 @@ func (compactInfo *CompactInfo) pushNext(popEle *HeapEle) bool {
 func (compactInfo *CompactInfo) fillLevels() (string, string) {
 	pInfo := partitionInfoMap[compactInfo.partitionId]
 
-	pInfo.levelLock.RLock()
-	defer pInfo.levelLock.RUnlock()
+	//pInfo.levelLock.RLock()
+	//defer pInfo.levelLock.RUnlock()
+
+	pInfo.readLock.RLock()
+	defer pInfo.readLock.RUnlock()
 
 	thisLevelSSTSeqNums := pInfo.levelsInfo[compactInfo.thisLevel].sstSeqNums
 	nextLevelSSTSeqNums := pInfo.levelsInfo[compactInfo.nextLevel].sstSeqNums
@@ -450,8 +455,11 @@ func fillOverlappedMap(overlappedMap map[uint32]*SSTReader, readers []*SSTReader
 func (compactInfo *CompactInfo) fillTopLevels() (string, string) {
 	//for bot level > 0, pick ssts if count is more than levelMaxSST
 	pInfo := partitionInfoMap[compactInfo.partitionId]
-	pInfo.levelLock.RLock()
-	defer pInfo.levelLock.RUnlock()
+	//pInfo.levelLock.RLock()
+	//defer pInfo.levelLock.RUnlock()
+
+	pInfo.readLock.RLock()
+	defer pInfo.readLock.RUnlock()
 
 	levelMax := DefaultConstants.levelMaxSST[compactInfo.thisLevel]
 	thisLevelSSTSeqNums := pInfo.levelsInfo[compactInfo.thisLevel].sstSeqNums
@@ -533,8 +541,11 @@ func overlap(sKey1, eKey1, sKey2, eKey2 string) bool {
 
 func (compactInfo *CompactInfo) updateLevel() {
 	pInfo := partitionInfoMap[compactInfo.partitionId]
-	pInfo.levelLock.Lock()
-	defer pInfo.levelLock.Unlock()
+	//pInfo.levelLock.Lock()
+	//defer pInfo.levelLock.Unlock()
+
+	pInfo.readLock.Lock()
+	defer pInfo.readLock.Unlock()
 
 	for _, reader := range compactInfo.botLevelSST {
 		delete(pInfo.levelsInfo[compactInfo.thisLevel].sstSeqNums, reader.SeqNm)
