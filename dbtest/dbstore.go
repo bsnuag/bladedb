@@ -12,7 +12,7 @@ import (
 var start = time.Now()
 
 func main() {
-	bladedb.Open()
+	bladedb.Open("conf/config.yaml")
 
 	nWrite := 10000000
 	//nWrite := 100000000 / 2
@@ -65,7 +65,7 @@ func writeRecs(nWrite int, wg *sync.WaitGroup) {
 			value: bytes.Repeat([]byte(fmt.Sprintf("%d", i)), 128*1)[:128],
 			wg:    wg,
 		}
-		if i%100000 == 0 {
+		if i>0 && i%100000 == 0 {
 			fmt.Println(fmt.Sprintf("Write completed: %d, time took: %f, total time: %f", i,
 				time.Since(localStart).Seconds(), time.Since(start).Seconds()))
 			localStart = time.Now()

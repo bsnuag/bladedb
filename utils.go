@@ -13,12 +13,12 @@ func Hash(input []byte) [32]byte { //thread safe ?
 }
 
 func PartitionId(input []byte) int {
-	return int(binary.LittleEndian.Uint16(input[:2]) % uint16(DefaultConstants.noOfPartitions))
+	return int(binary.LittleEndian.Uint16(input[:2]) % uint16(db.config.NoOfPartitions))
 }
 
 func newLevelInfo() map[int]*LevelInfo {
 	levelsInfo := make(map[int]*LevelInfo)
-	for lNo := 0; lNo <= DefaultConstants.maxLevel; lNo++ {
+	for lNo := 0; lNo <= MaxLevel; lNo++ {
 		levelsInfo[lNo] = &LevelInfo{
 			sstSeqNums: make(map[uint32]struct{}),
 		}

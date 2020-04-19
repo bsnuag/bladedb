@@ -1,22 +1,55 @@
 package bladedb
 
 import (
+	"github.com/pkg/errors"
+	"gopkg.in/yaml.v2"
+	"io/ioutil"
 	"runtime"
 )
 
-func Open() {
+var db *bladeDB = nil
+
+func Open(path string) {
 	runtime.GOMAXPROCS(100)
+	loadConfigs(path)
 	setupLogger()
 
-	err := CreateDirectory(LogDir)
+	err := CreateDirectory(db.config.LogDir)
 	if err != nil {
-		defaultLogger.Fatal().Err(err).Str("directory ", LogDir).Msg("Error while creating log directory")
+		db.logger.Fatal().Err(err).Str("directory ", db.config.LogDir).Msg("Error while creating log directory")
 	}
 
-	err = CreateDirectory(SSTDir)
+	err = CreateDirectory(db.config.DataDir)
 	if err != nil {
-		defaultLogger.Fatal().Err(err).Str("directory ", SSTDir).Msg("Error while creating SST directory")
+		db.logger.Fatal().Err(err).Str("directory ", db.config.LogDir).Msg("Error while creating SST directory")
 
 	}
 	PreparePartitionIdsMap()
+}
+
+func loadConfigs(configPath string) {
+	db = &bladeDB{}
+	config := &Config{LogFileMaxLen: DefaultLogFileMaxLen}
+	yamlFile, err := ioutil.ReadFile(configPath)
+	if err != nil {
+		panic(errors.Wrapf(err, "could not load config file: %s", configPath))
+	}
+	err = yaml.Unmarshal(yamlFile, config)
+	if err != nil {
+		panic(errors.Wrapf(err, "could not load config file: %s", configPath))
+	}
+	if err := validateConfig(config); err != nil {
+		panic(errors.Wrapf(err, "could not load config file: %s", configPath))
+	}
+	db.config = config
+	db.logEncoderBuf = make([]byte, uint32(db.config.NoOfPartitions)*LogEncoderPartLen) //this can be moved to other method
+	db.walFlushQueue = make(chan bool)
+	db.pMap = make(map[int]*PartitionInfo)
+}
+
+func validateConfig(config *Config) error {
+	//if false == strings.HasSuffix(config.DataDir, "/") {
+	//	panic(" must ends with /")
+	//}
+	return nil
 }

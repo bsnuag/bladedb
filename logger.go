@@ -8,12 +8,10 @@ import (
 	"time"
 )
 
-var defaultLogger = zerolog.Logger{}
-
 func setupLogger() {
 	zerolog.SetGlobalLevel(zerolog.InfoLevel)
 
-	var output = zerolog.ConsoleWriter{Out: os.Stdout, TimeFormat: time.RFC3339}
+	output := zerolog.ConsoleWriter{Out: os.Stdout, TimeFormat: time.RFC3339}
 
 	output.FormatLevel = func(i interface{}) string {
 		return strings.ToUpper(fmt.Sprintf("| %-6s|", i))
@@ -27,5 +25,5 @@ func setupLogger() {
 	output.FormatFieldValue = func(i interface{}) string {
 		return fmt.Sprintf("%s", i)
 	}
-	defaultLogger = zerolog.New(output).With().Timestamp().Logger()
+	db.logger = zerolog.New(output).With().Timestamp().Logger()
 }

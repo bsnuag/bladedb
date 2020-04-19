@@ -14,21 +14,21 @@ type LogReader struct {
 }
 
 func deleteLog(partitionId int, seqNum uint32) {
-	fName := LogDir + fmt.Sprintf(LogBaseFileName, seqNum, partitionId)
+	fName := db.config.LogDir + fmt.Sprintf(LogFileFmt, seqNum, partitionId)
 	if err := os.Remove(fName); err != nil && os.IsExist(err) {
-		defaultLogger.Error().Err(err).Msgf("Error while deleting logfile: %s", fName)
+		db.logger.Error().Err(err).Msgf("Error while deleting logfile: %s", fName)
 	} else {
-		defaultLogger.Info().Msgf("logfile: %s deleted", fName)
+		db.logger.Info().Msgf("logfile: %s deleted", fName)
 	}
 }
 
-func maxLogSeq(partId int) uint32 {
+func (pInfo *PartitionInfo) maxLogSeq(manifest *Manifest) uint32 {
 	maxLogSeq := uint32(0)
-	if manifestFile.manifest == nil {
+	if manifest == nil {
 		return maxLogSeq
 	}
 
-	for _, manifestRec := range manifestFile.manifest.logManifest[partId].manifestRecs {
+	for _, manifestRec := range manifest.logManifest[pInfo.partitionId].manifestRecs {
 		if manifestRec.seqNum > maxLogSeq {
 			maxLogSeq = manifestRec.seqNum
 		}
@@ -37,20 +37,20 @@ func maxLogSeq(partId int) uint32 {
 }
 
 //log files which were not successfully written to SST
-func (pInfo *PartitionInfo) loadUnclosedLogFile() error {
-	if manifestFile.manifest == nil {
-		defaultLogger.Info().Msgf("no unclosed log files for partition: %d", pInfo.partitionId)
+func (pInfo *PartitionInfo) loadUnclosedLogFile(manifest *Manifest) error {
+	if manifest == nil {
+		db.logger.Info().Msgf("no unclosed log files for partition: %d", pInfo.partitionId)
 		return nil
 	}
 	unclosedFiles := make(map[uint32]ManifestRec)
-	for _, manifestRec := range manifestFile.manifest.logManifest[pInfo.partitionId].manifestRecs {
-		if manifestRec.fop == DefaultConstants.fileDelete {
+	for _, manifestRec := range manifest.logManifest[pInfo.partitionId].manifestRecs {
+		if manifestRec.fop == fDelete {
 			deleteLog(manifestRec.partitionId, manifestRec.seqNum) //delete log file in case it's not deleted
 		} else {
 			unclosedFiles[manifestRec.seqNum] = manifestRec
 		}
 	}
-	defaultLogger.Info().Msgf("%d unclosed log files found for partition: %d", len(unclosedFiles), pInfo.partitionId)
+	db.logger.Info().Msgf("%d unclosed log files found for partition: %d", len(unclosedFiles), pInfo.partitionId)
 	for _, unClosedFile := range unclosedFiles {
 		inactiveLogDetails, err := pInfo.loadLogFile(unClosedFile.seqNum)
 		if err != EmptyFile && err != nil {
@@ -63,8 +63,8 @@ func (pInfo *PartitionInfo) loadUnclosedLogFile() error {
 			mf1 := ManifestRec{
 				partitionId: unClosedFile.partitionId,
 				seqNum:      unClosedFile.seqNum,
-				fop:         DefaultConstants.fileDelete,
-				fileType:    DefaultConstants.logFileType,
+				fop:         fDelete,
+				fileType:    LogFileType,
 			}
 			writeManifest([]ManifestRec{mf1})
 			deleteLog(unClosedFile.partitionId, unClosedFile.seqNum)
@@ -74,7 +74,7 @@ func (pInfo *PartitionInfo) loadUnclosedLogFile() error {
 }
 
 func (pInfo *PartitionInfo) loadLogFile(unClosedFileSeq uint32) (*InactiveLogDetails, error) {
-	logFile := LogDir + fmt.Sprintf(LogBaseFileName, unClosedFileSeq, pInfo.partitionId)
+	logFile := db.config.LogDir + fmt.Sprintf(LogFileFmt, unClosedFileSeq, pInfo.partitionId)
 	_, err := fileSize(logFile)
 	if err != nil {
 		return nil, err
@@ -104,7 +104,7 @@ func (pInfo *PartitionInfo) loadLogFile(unClosedFileSeq uint32) (*InactiveLogDet
 	}
 	inactiveLogDetails.WriteOffset = offset
 	if offset == 0 {
-		defaultLogger.Info().Msgf("recovered 0 bytes from %s unclosed log file", logFile)
+		db.logger.Info().Msgf("recovered 0 bytes from %s unclosed log file", logFile)
 		return inactiveLogDetails, nil
 	}
 
