@@ -10,15 +10,6 @@ import (
 	"os"
 )
 
-var LogDir = "data/commitlog"
-var LogBaseFileName = "/log_%d_%d.log"
-
-const logEncoderBufMetaLen = 1<<8 - 1 //1 byte(recType) + 16 bytes(ts)
-
-//logEncoderBuf - is shared among partitions, each works within a range of offset-offset+logEncoderPartLen. offset = partId * logEncoderPartLen
-var logEncoderPartLen = logEncoderBufMetaLen + DefaultConstants.keyMaxLen + DefaultConstants.keyMaxLen
-var logEncoderBuf = make([]byte, uint32(DefaultConstants.noOfPartitions)*logEncoderPartLen)
-
 //LogRecord - record to be inserted into log-commit files
 type LogRecord struct {
 	recType byte //write or tombstone
@@ -45,7 +36,7 @@ type InactiveLogDetails struct {
 }
 
 func newLogWriter(partitionId int, seqNum uint32) (*LogWriter, error) {
-	fileName := LogDir + fmt.Sprintf(LogBaseFileName, seqNum, partitionId)
+	fileName := db.config.LogDir + fmt.Sprintf(LogFileFmt, seqNum, partitionId)
 	file, err := os.OpenFile(fileName, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0644)
 
 	if err != nil {
@@ -63,8 +54,8 @@ func newLogWriter(partitionId int, seqNum uint32) (*LogWriter, error) {
 	mf1 := ManifestRec{
 		partitionId: partitionId,
 		seqNum:      seqNum,
-		fop:         DefaultConstants.fileCreate,
-		fileType:    DefaultConstants.logFileType,
+		fop:         fCreate,
+		fileType:    LogFileType,
 	}
 	writeManifest([]ManifestRec{mf1})
 	return logWriter, nil
@@ -88,15 +79,15 @@ func (logRec LogRecord) Encode(logRecBuf []byte) uint32 {
 }
 
 //writes data to wal file
-//checks if size is more than LogFileMaxLen. closed it and returns a summary rec
+//checks if size is more than logFileMaxLen. closed it and returns a summary rec
 func (writer *LogWriter) Write(key []byte, value []byte, ts uint64, recType byte) (*InactiveLogDetails, error) {
-	offset := uint32(writer.partitionId) * logEncoderPartLen //move to LogWriter
+	offset := uint32(writer.partitionId) * LogEncoderPartLen //move to LogWriter
 	logRec := LogRecord{recType, key, value, ts}
-	n := logRec.Encode(logEncoderBuf[offset : offset+logEncoderPartLen])
+	n := logRec.Encode(db.logEncoderBuf[offset : offset+LogEncoderPartLen])
 
 	var inactiveLogDetails *InactiveLogDetails = nil
 
-	if writer.writeOffset+n >= DefaultConstants.logFileMaxLen {
+	if writer.writeOffset+n >= db.config.LogFileMaxLen {
 		logDetails, err := writer.rollover()
 		if err != nil {
 			return inactiveLogDetails, err
@@ -104,7 +95,7 @@ func (writer *LogWriter) Write(key []byte, value []byte, ts uint64, recType byte
 		inactiveLogDetails = logDetails
 	}
 
-	if _, err := writer.fileWriter.Write(logEncoderBuf[offset : offset+n]); err != nil {
+	if _, err := writer.fileWriter.Write(db.logEncoderBuf[offset : offset+n]); err != nil {
 		return inactiveLogDetails, err
 	}
 	writer.writeOffset += n
@@ -114,12 +105,12 @@ func (writer *LogWriter) Write(key []byte, value []byte, ts uint64, recType byte
 
 //flush & closes current wal file and assigns a new file to log writer
 func (writer *LogWriter) rollover() (*InactiveLogDetails, error) {
-	pInfo := partitionInfoMap[writer.partitionId]
+	pInfo := db.pMap[writer.partitionId]
 	newLogWriter, err := newLogWriter(writer.partitionId, pInfo.getNextLogSeq())
 	if err != nil {
 		return nil, err
 	}
-	defaultLogger.Info().Msgf("rolling log from: %v to: %v", writer.file.Name(), newLogWriter.LogFileName())
+	db.logger.Info().Msgf("rolling log from: %v to: %v", writer.file.Name(), newLogWriter.LogFileName())
 	//flush content of buffer to disk and close file
 	inactiveLogDetails, err := writer.FlushAndClose()
 

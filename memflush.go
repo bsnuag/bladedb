@@ -4,47 +4,42 @@ import (
 	"bladedb/memstore"
 	"bladedb/sklist"
 	"fmt"
-	"sync"
 	"sync/atomic"
 	"time"
 )
 
-var memFlushTaskQueue chan *InactiveLogDetails = nil
-var activeMemFlushSubscriber sync.WaitGroup
-var memFlushActive int32 = 0
-
 //activate mem-flush and compact worker
 func activateMemFlushWorkers() {
-	if DefaultConstants.memFlushWorker != 0 {
-		memFlushTaskQueue = make(chan *InactiveLogDetails, 100000)
-		memFlushActive = 1
+	if db.config.MemFlushWorker != 0 {
+		db.memFlushTaskQueue = make(chan *InactiveLogDetails, 100000)
+		db.memFlushActive = 1
 	}
 
-	for i := 1; i <= DefaultConstants.memFlushWorker; i++ {
+	for i := 1; i <= db.config.MemFlushWorker; i++ {
 		go memFlushWorker(fmt.Sprintf("MemFlushWorker- %d", i))
 	}
 }
 
 func memFlushWorker(flushWorkerName string) {
-	activeMemFlushSubscriber.Add(1)
-	defer activeMemFlushSubscriber.Done()
+	db.activeMemFlushSubscriber.Add(1)
+	defer db.activeMemFlushSubscriber.Done()
 	for {
-		memTask, ok := <-memFlushTaskQueue
+		memTask, ok := <-db.memFlushTaskQueue
 		if !ok {
-			defaultLogger.Info().Msgf("Received signal to stop mem flush worker, exiting: %s", flushWorkerName)
+			db.logger.Info().Msgf("Received signal to stop mem flush worker, exiting: %s", flushWorkerName)
 			break
 		}
 		start := time.Now()
-		pInfo := partitionInfoMap[memTask.PartitionId]
+		pInfo := db.pMap[memTask.PartitionId]
 		if pInfo == nil {
-			defaultLogger.Fatal().Msgf("Could not find partition for partition number %d", memTask.PartitionId)
+			db.logger.Fatal().Msgf("Could not find partition for partition number %d", memTask.PartitionId)
 		}
 
 		recs := memTask.MemTable.Recs()
 		seqNum, err := pInfo.writeSSTAndIndex(recs)
 		//this memtable will still be in memory, but won't be attempted for re-flush. Should this be retried for n times ?
 		if err != nil {
-			defaultLogger.Err(err).Int("partitionId", memTask.PartitionId).
+			db.logger.Err(err).Int("partitionId", memTask.PartitionId).
 				Msg("Error while flushing memtable, aborting memflush")
 			continue
 		}
@@ -53,16 +48,16 @@ func memFlushWorker(flushWorkerName string) {
 		mf1 := ManifestRec{
 			partitionId: memTask.PartitionId,
 			seqNum:      memTask.FileSeqNum,
-			fop:         DefaultConstants.fileDelete,
-			fileType:    DefaultConstants.logFileType,
+			fop:         fDelete,
+			fileType:    LogFileType,
 		}
 
 		mf2 := ManifestRec{
 			partitionId: memTask.PartitionId,
 			levelNum:    0,
 			seqNum:      seqNum,
-			fop:         DefaultConstants.fileCreate,
-			fileType:    DefaultConstants.sstFileType,
+			fop:         fCreate,
+			fileType:    DataFileType,
 		}
 		//writeManifest log-delete and sst-create details
 		writeManifest([]ManifestRec{mf1, mf2})
@@ -81,7 +76,7 @@ func memFlushWorker(flushWorkerName string) {
 		deleteLog(memTask.PartitionId, memTask.FileSeqNum)
 		pInfo.level0PossibleCompaction()
 
-		defaultLogger.Info().
+		db.logger.Info().
 			Int("partition", memTask.PartitionId).
 			Uint32("bytes flushed", memTask.WriteOffset).
 			Float64("duration (seconds)", time.Since(start).Seconds()).
@@ -91,7 +86,7 @@ func memFlushWorker(flushWorkerName string) {
 
 //Stop reading while flushing data to sst, sst recs might not be available before it exits in indexRec
 func (pInfo *PartitionInfo) writeSSTAndIndex(memRecs *sklist.SkipList) (uint32, error) {
-	var sstEncoderBuf = make([]byte, sstBufLen)
+	var sstEncoderBuf = make([]byte, SSTBufLen)
 	var startKey, endKey []byte = nil, nil
 	var noOfDelReq, noOfWriteReq, indexOffset uint32 = 0, 0, 0
 	sstWriter, err := pInfo.NewSSTWriter()
@@ -111,8 +106,8 @@ func (pInfo *PartitionInfo) writeSSTAndIndex(memRecs *sklist.SkipList) (uint32, 
 			return 0, err
 		}
 
-		//if rec type is writeReq then load to index, delete request need not load to index
-		if value.RecType == DefaultConstants.writeReq {
+		//if rec type is WriteReq then load to index, delete request need not load to index
+		if value.RecType == WriteReq {
 			indexRec := IndexRec{
 				SSTRecOffset:  indexOffset,
 				SSTFileSeqNum: sstWriter.SeqNum,
@@ -162,26 +157,26 @@ func (pInfo *PartitionInfo) writeSSTAndIndex(memRecs *sklist.SkipList) (uint32, 
 
 func publishMemFlushTask(inactiveLogDetails *InactiveLogDetails) {
 	if isMemFlushActive() {
-		memFlushTaskQueue <- inactiveLogDetails
+		db.memFlushTaskQueue <- inactiveLogDetails
 	} else {
-		defaultLogger.Info().Msg("MemFlush is not active, cannot publish new task")
+		db.logger.Info().Msg("MemFlush is not active, cannot publish new task")
 	}
 }
 
 func isMemFlushActive() bool {
-	return memFlushActive == 1 //TODO - will there be race around it since read is not atomic?
+	return db.memFlushActive == 1 //TODO - will there be race around it since read is not atomic?
 }
 
 func stopMemFlushWorker() {
-	if DefaultConstants.memFlushWorker == 0 {
+	if db.config.MemFlushWorker == 0 {
 		return
 	}
-	defaultLogger.Info().Msg("Request received to stop MemFlush workers")
+	db.logger.Info().Msg("Request received to stop MemFlush workers")
 
-	atomic.AddInt32(&memFlushActive, -1)
-	close(memFlushTaskQueue)
+	atomic.AddInt32(&db.memFlushActive, -1)
+	close(db.memFlushTaskQueue)
 
-	defaultLogger.Info().Msg("Waiting for all submitted mem flush tasks to complete")
-	activeMemFlushSubscriber.Wait()
-	defaultLogger.Info().Msg("all submitted MemFlush tasks completed")
+	db.logger.Info().Msg("Waiting for all submitted mem flush tasks to complete")
+	db.activeMemFlushSubscriber.Wait()
+	db.logger.Info().Msg("all submitted MemFlush tasks completed")
 }

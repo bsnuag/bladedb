@@ -3,53 +3,49 @@ package bladedb
 import (
 	"fmt"
 	"github.com/stretchr/testify/require"
+	"gopkg.in/yaml.v2"
 	"io/ioutil"
-	"log"
 	"os"
 	"sync"
 	"testing"
 )
 
-func setupDBTest() (tearTest func()) {
-	sstdir, err := ioutil.TempDir("", "dbTestSST")
-	if err != nil {
-		log.Fatal(err)
+func setupDBTest() (configFile string, tearTest func()) {
+	config := Config{LogFileMaxLen: DefaultLogFileMaxLen,
+		LogDir:              "dbTestLog/",
+		DataDir:             "dbTestSST/",
+		WalFlushPeriodInSec: 10,
+		CompactWorker:       0,
+		NoOfPartitions:      8,
+		MemFlushWorker:      8,
 	}
-	logdir, err := ioutil.TempDir("", "dbTestLog")
+	bytes, _ := yaml.Marshal(&config)
+	cFile, err := ioutil.TempFile("", "abcdef.yaml")
 	if err != nil {
-		log.Fatal(err)
+		panic(err)
 	}
-	manifestfile, err := ioutil.TempFile("", "dbTestManifest")
-	if err != nil {
-		log.Fatal(err)
+	if _, err = cFile.Write(bytes); err != nil {
+		panic(err)
+	}
+	if err = cFile.Close(); err != nil {
+		panic(err)
 	}
 
-	// update SSTDir to temp directory
-	SSTDir = sstdir
-	LogDir = logdir
-	ManifestFileName = manifestfile.Name()
-	DefaultConstants.compactWorker = 0
-	DefaultConstants.memFlushWorker = 0
-	DefaultConstants.noOfPartitions = 1
-
-	return func() {
-		closeManifest()
-		os.RemoveAll(sstdir)
-		os.RemoveAll(logdir)
-		os.RemoveAll(manifestfile.Name())
-		partitionInfoMap = make(map[int]*PartitionInfo) //clear index map
+	return cFile.Name(), func() {
+		os.RemoveAll(config.DataDir)
+		os.RemoveAll(config.LogDir)
+		os.RemoveAll(cFile.Name())
+		db = nil
 	}
 }
 
 //writes & closes - 1. test db reload from manifest is correct, 2. test if deleted keys re-appears,
 func TestDBWrite_With_Reload_MemFlush(t *testing.T) {
-	defer setupDBTest()()
-
-	DefaultConstants.noOfPartitions = 8
-	DefaultConstants.memFlushWorker = 8 //override
+	configFilePath, tearTestFun := setupDBTest()
+	defer tearTestFun()
 
 	wg := sync.WaitGroup{}
-	Open()
+	Open(configFilePath)
 	wg.Add(5000)
 	for i := 0; i < 5000; i++ {
 		go func(j int) { // goroutines are used to test if parallel write to log encoder buffer is working properly
@@ -66,7 +62,7 @@ func TestDBWrite_With_Reload_MemFlush(t *testing.T) {
 	}
 	Drain() //similar to close DB
 
-	Open() //reopen db
+	Open(configFilePath) //reopen db
 	wg.Add(1000)
 	for i := 0; i < 1000; i++ {
 		go func(j int) {
@@ -83,7 +79,7 @@ func TestDBWrite_With_Reload_MemFlush(t *testing.T) {
 	}
 	Drain() //1000 delete request will go to SST (2nd SST)
 
-	Open() //reopen db
+	Open(configFilePath) //reopen db
 	wg.Add(5000)
 	for i := 0; i < 5000; i++ {
 		go func(j int) {

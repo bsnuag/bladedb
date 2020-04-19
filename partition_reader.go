@@ -8,7 +8,7 @@ import (
 func Get(key []byte) ([]byte, error) {
 	hash := Hash(key)
 	partitionId := PartitionId(hash[:])
-	pInfo := partitionInfoMap[partitionId]
+	pInfo := db.pMap[partitionId]
 
 	pInfo.readLock.RLock()
 	defer pInfo.readLock.RUnlock()
@@ -16,7 +16,7 @@ func Get(key []byte) ([]byte, error) {
 	memRec, _ := pInfo.memTable.Find(key)
 
 	if memRec != nil {
-		if memRec.RecType == DefaultConstants.deleteReq { //if delete request
+		if memRec.RecType == DelReq { //if delete request
 			return nil, nil
 		}
 		return memRec.Value, nil
@@ -31,7 +31,7 @@ func Get(key []byte) ([]byte, error) {
 			return nil, errors.Wrapf(err, "Error while reading data from inactive memtables for key: %s", key)
 		}
 		if memRec != nil {
-			if memRec.RecType == DefaultConstants.deleteReq {
+			if memRec.RecType == DelReq {
 				return nil, nil
 			}
 			return memRec.Value, nil
