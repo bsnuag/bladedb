@@ -17,7 +17,7 @@ type BladeDBServer struct {
 var activeServer *grpc.Server
 
 func (*BladeDBServer) Get(ctx context.Context, request *proto.GetRequest) (*proto.GetResponse, error) {
-	value, err := bladedb.Get(request.Key)
+	value, err := bladedb.Get([]byte(request.Key))
 
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, "error while fetching value: %v", request.Key)
@@ -35,7 +35,7 @@ func (*BladeDBServer) Get(ctx context.Context, request *proto.GetRequest) (*prot
 }
 
 func (*BladeDBServer) Set(ctx context.Context, request *proto.SetRequest) (*proto.SetResponse, error) {
-	err := bladedb.Put(request.Key, request.Value)
+	err := bladedb.Put([]byte(request.Key), request.Value)
 
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, "error while writing key: %v, value: %v, error: %v",
@@ -49,7 +49,7 @@ func (*BladeDBServer) Set(ctx context.Context, request *proto.SetRequest) (*prot
 }
 
 func (*BladeDBServer) Del(ctx context.Context, request *proto.DelRequest) (*proto.DelResponse, error) {
-	value, err := bladedb.Remove(request.Key)
+	value, err := bladedb.Remove([]byte(request.Key))
 
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, "error while deleting key: %v error: %v", request.Key, err)

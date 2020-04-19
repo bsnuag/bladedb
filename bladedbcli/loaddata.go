@@ -1,7 +1,6 @@
 package main
 
 import (
-	"bladedb"
 	proto "bladedb/proto"
 	"context"
 	"fmt"
@@ -72,7 +71,7 @@ func loadData(start int, end int, name string) {
 }
 
 func newClient() proto.BladeDBClient {
-	address := fmt.Sprintf("0.0.0.0:%d", bladedb.DefaultConstants.ClientListenPort)
+	address := fmt.Sprintf("0.0.0.0:%d", "9099")
 	client, err := grpc.Dial(address, grpc.WithInsecure())
 	if err != nil {
 		log.Fatal(err)

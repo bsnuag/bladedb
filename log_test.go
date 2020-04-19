@@ -5,8 +5,8 @@ import (
 	"bytes"
 	"fmt"
 	"github.com/stretchr/testify/require"
+	"gopkg.in/yaml.v2"
 	"io/ioutil"
-	"log"
 	"os"
 	"testing"
 )
@@ -97,54 +97,46 @@ func (logRec1 LogRecord) equals(logRec2 LogRecord) bool {
 		logRec1.ts == logRec2.ts
 }
 
-func prepareLogTest() (tearTest func()) {
-	sstdir, err := ioutil.TempDir("", "logTestSST")
-	if err != nil {
-		log.Fatal(err)
+func prepareLogTest(pNum int) (cFileName string, tearTest func()) {
+	config := Config{LogFileMaxLen: DefaultLogFileMaxLen,
+		LogDir:              "logTestLog/",
+		DataDir:             "logTestSST/",
+		WalFlushPeriodInSec: 10,
+		CompactWorker:       0,
+		NoOfPartitions:      pNum,
+		MemFlushWorker:      0,
 	}
-	logdir, err := ioutil.TempDir("", "logTestLog")
+	bytes, _ := yaml.Marshal(&config)
+	cFile, err := ioutil.TempFile("", "abcdef.yaml")
 	if err != nil {
-		log.Fatal(err)
+		panic(err)
 	}
-	manifestfile, err := ioutil.TempFile("", "logTestManifest")
-	if err != nil {
-		log.Fatal(err)
+	if _, err = cFile.Write(bytes); err != nil {
+		panic(err)
+	}
+	if err = cFile.Close(); err != nil {
+		panic(err)
 	}
 
-	// update SSTDir to temp directory
-	SSTDir = sstdir
-	LogDir = logdir
-	ManifestFileName = manifestfile.Name()
-	DefaultConstants.compactWorker = 0
-	DefaultConstants.memFlushWorker = 0 //all inactive memtable will in memory+wal, wont be flushed to SST
-	DefaultConstants.noOfPartitions = 8
-	initManifest()
-
-	return func() {
-		closeManifest()
-		os.RemoveAll(sstdir)
-		os.RemoveAll(logdir)
-		os.RemoveAll(manifestfile.Name())
-		partitionInfoMap = make(map[int]*PartitionInfo) //clear index map
+	return cFile.Name(), func() {
+		os.RemoveAll(config.DataDir)
+		os.RemoveAll(config.LogDir)
+		os.RemoveAll(cFile.Name())
+		db = nil
 	}
 }
 
 //Writes data only to log and recover it. Matches recovered data is same with old written data
 func TestLogWrite_RecoverRead(t *testing.T) {
-	defer prepareLogTest()()
-
-	for pId := 0; pId < DefaultConstants.noOfPartitions; pId++ {
-		pInfo := NewPartition(pId)
-		logWriter, _ := newLogWriter(pId, pInfo.getNextLogSeq())
-		pInfo.logWriter = logWriter
-		partitionInfoMap[pId] = pInfo
-	}
+	cFileName, tearTest := prepareLogTest(2)
+	defer tearTest()
+	defer Drain()
+	Open(cFileName)
 
 	key := "abcdef%d"
 	value := "zbtrql%d"
 	writesN := 1000
-	for pId := 0; pId < DefaultConstants.noOfPartitions; pId++ {
-		pInfo, _ := partitionInfoMap[pId]
+	for _, pInfo := range db.pMap {
 		for i := 1; i <= writesN; i++ {
 			ts := NanoTime()
 			pInfo.logWriter.Write([]byte(fmt.Sprintf(key, i)), []byte(fmt.Sprintf(value, i)), ts, 1)
@@ -181,13 +173,13 @@ func TestLogWrite_RecoverRead(t *testing.T) {
 
 //Writes data only to log and recover it.
 func TestLogWrite_RecoverRead_WithOneEmptyFile(t *testing.T) {
-	defer prepareLogTest()()
+	cFileName, tearTest := prepareLogTest(1)
+	defer tearTest()
+	defer Drain()
+	Open(cFileName)
 
-	DefaultConstants.noOfPartitions = 1
 	partitionId := 0
-	pInfo := NewPartition(partitionId)
-	pInfo.logWriter, _ = newLogWriter(partitionId, pInfo.getNextLogSeq())
-	partitionInfoMap[partitionId] = pInfo
+	pInfo := db.pMap[partitionId]
 
 	key := "abcdef%d"
 	value := "zbtrql%d"
@@ -220,13 +212,16 @@ func TestLogWrite_RecoverRead_WithOneEmptyFile(t *testing.T) {
 }
 
 func TestLogRollover(t *testing.T) {
-	defer prepareLogTest()()
-	DefaultConstants.noOfPartitions = 1
+	cFileName, tearTest := prepareLogTest(1)
+	defer tearTest()
+	defer Drain()
+	Open(cFileName)
+
 	partitionId := 0
 	pInfo := NewPartition(partitionId)
 	logWriter, _ := newLogWriter(partitionId, pInfo.getNextLogSeq())
 	pInfo.logWriter = logWriter
-	partitionInfoMap[partitionId] = pInfo
+	db.pMap[partitionId] = pInfo
 
 	key := "abcdef%d"
 	value := "zbtrql%d"
@@ -242,5 +237,5 @@ func TestLogRollover(t *testing.T) {
 	pInfo.logWriter.FlushAndClose()
 	logDetails := pInfo.inactiveLogDetails[0]
 	fsz, _ := fileSize(logDetails.FileName)
-	require.True(t, DefaultConstants.logFileMaxLen >= uint32(fsz))
+	require.True(t, db.config.LogFileMaxLen >= uint32(fsz))
 }

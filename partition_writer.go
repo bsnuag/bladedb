@@ -9,7 +9,7 @@ import (
 func Remove(key []byte) (value []byte, err error) {
 	hash := Hash(key)
 	partitionId := PartitionId(hash[:])
-	pInfo := partitionInfoMap[partitionId]
+	pInfo := db.pMap[partitionId]
 
 	if pInfo == nil {
 		return value, errors.Wrapf(err, "partition doesn't exists for partition: %d, Key: %s ", partitionId, key)
@@ -26,7 +26,7 @@ func Remove(key []byte) (value []byte, err error) {
 		return nil, nil
 	}
 	ts := NanoTime()
-	inactiveLogDetails, err := pInfo.logWriter.Write(key, nil, ts, DefaultConstants.deleteReq)
+	inactiveLogDetails, err := pInfo.logWriter.Write(key, nil, ts, DelReq)
 
 	if err != nil {
 		return value, errors.Wrapf(err, "error while deleting key: %v", key)
@@ -37,7 +37,7 @@ func Remove(key []byte) (value []byte, err error) {
 	}
 
 	//pInfo.readLock.Lock() - skiplist is thread-safe
-	pInfo.memTable.Insert(key, nil, ts, DefaultConstants.deleteReq) //We need to put delete rec in mem, since it gets into SST later
+	pInfo.memTable.Insert(key, nil, ts, DelReq) //We need to put delete rec in mem, since it gets into SST later
 	pInfo.index.Remove(hash)
 	//pInfo.readLock.Unlock() - skiplist is thread-safe
 	return value, nil
@@ -46,7 +46,7 @@ func Remove(key []byte) (value []byte, err error) {
 func Put(key []byte, valueByte []byte) error {
 	hash := Hash(key)
 	partitionId := PartitionId(hash[:])
-	pInfo := partitionInfoMap[partitionId]
+	pInfo := db.pMap[partitionId]
 
 	if pInfo == nil {
 		return errors.New(fmt.Sprintf("partition doesn't exists for partition: %d, Key: %s ", partitionId, key))
@@ -57,7 +57,7 @@ func Put(key []byte, valueByte []byte) error {
 	defer pInfo.writeLock.Unlock()
 
 	ts := NanoTime()
-	inactiveLogDetails, err := pInfo.logWriter.Write(key, valueByte, ts, DefaultConstants.writeReq)
+	inactiveLogDetails, err := pInfo.logWriter.Write(key, valueByte, ts, WriteReq)
 
 	if err != nil {
 		return errors.Wrapf(err, "error while writing key: %v, value: %v", key, valueByte)
@@ -68,7 +68,7 @@ func Put(key []byte, valueByte []byte) error {
 	}
 
 	//pInfo.readLock.Lock()- skiplist is thread-safe
-	pInfo.memTable.Insert(key, valueByte, ts, DefaultConstants.writeReq)
+	pInfo.memTable.Insert(key, valueByte, ts, WriteReq)
 	//pInfo.readLock.Unlock()- skiplist is thread-safe
 	return nil
 }

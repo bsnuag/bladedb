@@ -4,17 +4,7 @@ import (
 	"github.com/niubaoshu/gotiny"
 	"io"
 	"os"
-	"sync"
 )
-
-var ManifestFileName = "data/MANIFEST"
-var manifestRecLen = 50
-
-type ManifestFile struct {
-	file     *os.File
-	manifest *Manifest
-	mutex    sync.Mutex
-}
 
 type Manifest struct {
 	sstManifest map[int]ManifestRecs //partId -> ManifestRec
@@ -33,64 +23,53 @@ type ManifestRec struct {
 	fileType    byte //0 - log file , 1 - sst file
 }
 
-var manifestFile *ManifestFile = nil
-
-func initManifest() error {
-	file, err := os.OpenFile(ManifestFileName, os.O_CREATE|os.O_RDWR|os.O_APPEND, os.ModePerm)
+func initManifest() (error, *Manifest) {
+	file, err := os.OpenFile(db.config.DataDir+ManifestFileFmt, os.O_CREATE|os.O_RDWR|os.O_APPEND, os.ModePerm)
 	if err != nil {
-		return err
+		return err, nil
 	}
-	manifestFile = &ManifestFile{
-		file:     file,
-		manifest: nil,
-	}
-	err = replay()
-	if err != nil {
-		return err
-	}
-	return nil
+	db.manifestFile = file
+	return replayManifest()
 }
 
 func closeManifest() error {
-	if manifestFile == nil || manifestFile.file == nil {
-		manifestFile = nil
+	if db.manifestFile == nil {
 		return nil
 	}
-	if err := manifestFile.file.Close(); err != nil { //do we need to sync or close is enough?
+	if err := db.manifestFile.Close(); err != nil { //do we need to sync or close is enough?
 		return err
 	}
-	manifestFile = nil
 	return nil
 }
 
 //https://blog.cloudflare.com/recycling-memory-buffers-in-go/
 func writeManifest(manifestArr []ManifestRec) error { //TODO - when grows to a threshold - re-writeManifest info
-	manifestFile.mutex.Lock()
-	defer manifestFile.mutex.Unlock()
+	db.manifestLock.Lock()
+	defer db.manifestLock.Unlock()
 
-	byteBuf := make([]byte, manifestRecLen*len(manifestArr))
+	byteBuf := make([]byte, ManifestRecLen*len(manifestArr))
 	var byteIndex = 0
 	for _, manifest := range manifestArr {
 		marshal := gotiny.Marshal(&manifest)
-		copy(byteBuf[byteIndex:byteIndex+manifestRecLen], marshal)
-		byteIndex += manifestRecLen
+		copy(byteBuf[byteIndex:byteIndex+ManifestRecLen], marshal)
+		byteIndex += ManifestRecLen
 	}
-	if _, err := manifestFile.file.Write(byteBuf); err != nil {
+	if _, err := db.manifestFile.Write(byteBuf); err != nil {
 		return err
 	}
-	if err := manifestFile.file.Sync(); err != nil { //test and remove this - already provided while creating file
+	if err := db.manifestFile.Sync(); err != nil { //test and remove this - already provided while creating file
 		return err
 	}
 	return nil
 }
 
-func replay() error {
-	manifestFile.file.Seek(0, 0)
+func replayManifest() (error, *Manifest) {
+	db.manifestFile.Seek(0, 0)
 	manifest := Manifest{
 		sstManifest: make(map[int]ManifestRecs),
 		logManifest: make(map[int]ManifestRecs),
 	}
-	for partitionId := 0; partitionId < DefaultConstants.noOfPartitions; partitionId++ {
+	for partitionId := 0; partitionId < db.config.NoOfPartitions; partitionId++ {
 		manifest.sstManifest[partitionId] = ManifestRecs{
 			manifestRecs: make(map[uint32]ManifestRec),
 		}
@@ -100,28 +79,28 @@ func replay() error {
 	}
 	recCount := 0
 	for {
-		buf := make([]byte, manifestRecLen)
-		_, err := manifestFile.file.Read(buf)
+		buf := make([]byte, ManifestRecLen)
+		_, err := db.manifestFile.Read(buf)
 		if err != nil {
 			if err == io.EOF {
 				break
 			} else {
-				return err
+				return err, nil
 			}
 		}
 		mRec := ManifestRec{}
 		gotiny.Unmarshal(buf, &mRec)
 		recCount++
-		if mRec.fileType == 1 {
+		if mRec.fileType == DataFileType {
 			manifest.sstManifest[mRec.partitionId].manifestRecs[mRec.seqNum] = mRec
-		} else if mRec.fileType == 0 {
+		} else if mRec.fileType == LogFileType {
 			manifest.logManifest[mRec.partitionId].manifestRecs[mRec.seqNum] = mRec
 		} else {
-			//error
+			db.logger.Error().Msg("unsupported ty manifest rec type, supports 0 & 1")
 		}
 	}
 	if recCount > 0 {
-		manifestFile.manifest = &manifest
+		return nil, &manifest
 	}
-	return nil
+	return nil, nil
 }

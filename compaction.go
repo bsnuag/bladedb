@@ -96,26 +96,26 @@ func (compactInfo *CompactInfo) sortInputSST() {
 // 2. compaction from 1st level to next should get trigger when a new file in 1st level gets created
 //gets triggered when a new sst is created at level 0
 func compactWorker(workerName string) {
-	compactSubscriber.Add(1)
-	defer compactSubscriber.Done()
+	db.compactSubscriber.Add(1)
+	defer db.compactSubscriber.Done()
 	for {
-		compactTask, ok := <-compactTaskQueue
+		compactTask, ok := <-db.compactTaskQueue
 		if !ok {
-			defaultLogger.Info().Msgf("Received signal to stop compact worker, exiting: %s", workerName)
+			db.logger.Info().Msgf("Received signal to stop compact worker, exiting: %s", workerName)
 			break
 		}
-		defaultLogger.Info().
+		db.logger.Info().
 			Int("partition ", compactTask.partitionId).Int("base level ", compactTask.thisLevel).
 			Msgf("compaction request received")
 
-		partitionInfo := partitionInfoMap[compactTask.partitionId]
+		partitionInfo := db.pMap[compactTask.partitionId]
 
 		partitionInfo.compactLock.Lock() //TODO - check if using mutex inside channel a good practice
 		var compactInfo *CompactInfo = nil
 		sKey, eKey := "", ""
 
 		if partitionInfo.activeCompaction != nil {
-			defaultLogger.Info().
+			db.logger.Info().
 				Int("partition ", compactTask.partitionId).
 				Msgf("compaction within partition is sequential, cannot trigger another one")
 		} else {
@@ -127,7 +127,7 @@ func compactWorker(workerName string) {
 				sKey, eKey = compactInfo.fillTopLevels()
 			}
 			if sKey == "" && eKey == "" { //this condition will never arise - check it
-				defaultLogger.Info().Int("level", compactTask.thisLevel).Int("partition", partitionInfo.partitionId).Msg("no overlapped ssts found")
+				db.logger.Info().Int("level", compactTask.thisLevel).Int("partition", partitionInfo.partitionId).Msg("no overlapped ssts found")
 				partitionInfo.activeCompaction = nil
 				compactInfo = nil
 			}
@@ -139,7 +139,7 @@ func compactWorker(workerName string) {
 			compactStartTime := time.Now()
 			if compactErr := compactInfo.compact(); compactErr != nil { //abort compaction and log error message
 				partitionInfo.completeCompaction()
-				defaultLogger.Error().
+				db.logger.Error().
 					Err(compactErr).Int("partition", compactInfo.partitionId).
 					Msgf("Error in compaction, bottom level(%d) ssts: %v, bottom level(%d) ssts : %v",
 						compactInfo.thisLevel, botLevelSSTNames, compactInfo.nextLevel, topLevelSSTNames)
@@ -150,7 +150,7 @@ func compactWorker(workerName string) {
 				partitionInfo.completeCompaction()
 				partitionInfo.checkPossibleCompaction(compactInfo.nextLevel)
 
-				defaultLogger.Info().
+				db.logger.Info().
 					Int("Partition", compactInfo.partitionId).
 					Float64("duration (Seconds)", time.Since(compactStartTime).Seconds()).
 					Int("Bottom level", compactInfo.thisLevel).
@@ -167,7 +167,7 @@ func compactWorker(workerName string) {
 
 //check if nextLevel is eligible for compaction
 func (pInfo *PartitionInfo) checkPossibleCompaction(level int) {
-	if level != DefaultConstants.maxLevel && len(pInfo.levelsInfo[level].sstSeqNums) > int(DefaultConstants.levelMaxSST[level]) {
+	if level != MaxLevel && len(pInfo.levelsInfo[level].sstSeqNums) > int(LevelCompactInf[level]) {
 		publishCompactTask(&CompactInfo{
 			partitionId: pInfo.partitionId,
 			thisLevel:   level,
@@ -191,18 +191,18 @@ func (compactInfo *CompactInfo) compact() error {
 	var indexOffset uint32 = 0
 	compactInfo.buildHeap()
 
-	pInfo := partitionInfoMap[compactInfo.partitionId]
+	pInfo := db.pMap[compactInfo.partitionId]
 	sstWriter, err := pInfo.NewSSTWriter()
 	if err != nil {
 		return err
 	}
-	var sstEncoderBuf = make([]byte, uint32(DefaultConstants.noOfPartitions)*logEncoderPartLen)
+	var sstEncoderBuf = make([]byte, uint32(db.config.NoOfPartitions)*LogEncoderPartLen)
 	totalCompactIndexWrite := 0
 	for compactInfo.heap.Len() > 0 {
 		_, rec := compactInfo.nextRec()
-		if compactInfo.nextLevel == DefaultConstants.maxLevel && rec.recType == DefaultConstants.deleteReq {
-			defaultLogger.Info().Msgf("Tombstone rec: %v, with target level=%d, "+
-				"avoiding it from adding it to compacted sst", DefaultConstants.maxLevel, rec)
+		if compactInfo.nextLevel == MaxLevel && rec.recType == DelReq {
+			db.logger.Info().Msgf("Tombstone rec: %v, with target level=%d, "+
+				"avoiding it from adding it to compacted sst", MaxLevel, rec)
 			continue
 		}
 		indexRec := IndexRec{
@@ -218,16 +218,16 @@ func (compactInfo *CompactInfo) compact() error {
 		}
 		indexOffset += nn
 
-		if rec.recType == DefaultConstants.deleteReq {
+		if rec.recType == DelReq {
 			sstWriter.noOfDelReq++
-		} else if rec.recType == DefaultConstants.writeReq {
+		} else if rec.recType == WriteReq {
 			sstWriter.noOfWriteReq++
 			keyHash := Hash(rec.key)
 			compactInfo.idx.Set(keyHash, indexRec) //index update only for write request
 		}
 		sstWriter.updateKeys(rec.key)
 
-		if indexOffset >= DefaultConstants.maxSSTSize {
+		if indexOffset >= MaxDataFileSz {
 			if err := sstWriter.FlushAndClose(); err != nil {
 				return err
 			}
@@ -297,8 +297,8 @@ func (pInfo *PartitionInfo) updatePartition() {
 			partitionId: pInfo.partitionId,
 			seqNum:      reader.SeqNm,
 			levelNum:    compactInfo.thisLevel,
-			fop:         DefaultConstants.fileDelete,
-			fileType:    DefaultConstants.sstFileType,
+			fop:         fDelete,
+			fileType:    DataFileType,
 		}
 		//deleteReaders = append(deleteReaders, reader)
 		defer deleteReadersFun(reader)
@@ -313,8 +313,8 @@ func (pInfo *PartitionInfo) updatePartition() {
 			partitionId: pInfo.partitionId,
 			seqNum:      reader.SeqNm,
 			levelNum:    compactInfo.nextLevel,
-			fop:         DefaultConstants.fileDelete,
-			fileType:    DefaultConstants.sstFileType,
+			fop:         fDelete,
+			fileType:    DataFileType,
 		}
 		//deleteReaders = append(deleteReaders, reader)
 		defer deleteReadersFun(reader)
@@ -361,7 +361,7 @@ func (compactInfo *CompactInfo) pushNext(popEle *HeapEle) bool {
 	nextRec, ok := popEle.iterator.Next()
 
 	if !ok {
-		defaultLogger.Info().Msgf("reached end of compacting sst file: %s, ", popEle.iterator.mappedFileName)
+		db.logger.Info().Msgf("reached end of compacting sst file: %s, ", popEle.iterator.mappedFileName)
 		return false
 	}
 
@@ -375,7 +375,7 @@ func (compactInfo *CompactInfo) pushNext(popEle *HeapEle) bool {
 
 //when current level is 0 and next level is 1
 func (compactInfo *CompactInfo) fillLevels() (string, string) {
-	pInfo := partitionInfoMap[compactInfo.partitionId]
+	pInfo := db.pMap[compactInfo.partitionId]
 
 	//pInfo.levelLock.RLock()
 	//defer pInfo.levelLock.RUnlock()
@@ -390,7 +390,7 @@ func (compactInfo *CompactInfo) fillLevels() (string, string) {
 	thisLevelSKey := ""
 	thisLevelEKey := ""
 
-	//collect all sst's from this level until total overlapped compact files are less than maxSSTCompact
+	//collect all sst's from this level until total overlapped compact files are less than MaxSSTCompact
 	//fist file of this level gets added automatically irrespective of number of match with next level
 	nextLevelOverlappedSSTMap := make(map[uint32]*SSTReader)
 	for _, sstSeq := range thisLevelSortedSeqNums {
@@ -407,13 +407,13 @@ func (compactInfo *CompactInfo) fillLevels() (string, string) {
 				thisLevelSKey = sKey
 				thisLevelEKey = eKey
 			} else {
-				if len(overlappedSST) > DefaultConstants.maxSSTCompact {
+				if len(overlappedSST) > MaxSSTCompact {
 					continue
 				}
 				tmp_sKey, tmp_eKey := keyRange(sKey, eKey, thisLevelSKey, thisLevelEKey)
 				//fmt.Println("tmp_sKey, tmp_eKey :", tmp_sKey, tmp_eKey)
 				overlappedSST := pInfo.overlappedSSTReaders(nextLevelSSTSeqNums, tmp_sKey, tmp_eKey)
-				if len(overlappedSST) > 0 && len(overlappedSST) <= DefaultConstants.maxSSTCompact {
+				if len(overlappedSST) > 0 && len(overlappedSST) <= MaxSSTCompact {
 					//fmt.Println(sstReader)
 					compactInfo.botLevelSST = append(compactInfo.botLevelSST, sstReader)
 					fillOverlappedMap(nextLevelOverlappedSSTMap, overlappedSST)
@@ -426,7 +426,7 @@ func (compactInfo *CompactInfo) fillLevels() (string, string) {
 
 	//if no overlapped found for individual level 0 files, take all bot files and do compact
 	if len(compactInfo.botLevelSST) == 0 {
-		defaultLogger.Info().Msg("No overlapped tables found in level 1, all level 0 files will be compacted")
+		db.logger.Info().Msg("No overlapped tables found in level 1, all level 0 files will be compacted")
 		for sstSeqNum := range thisLevelSSTSeqNums {
 			reader := pInfo.sstReaderMap[sstSeqNum]
 			compactInfo.botLevelSST = append(compactInfo.botLevelSST, reader)
@@ -453,15 +453,15 @@ func fillOverlappedMap(overlappedMap map[uint32]*SSTReader, readers []*SSTReader
 }
 
 func (compactInfo *CompactInfo) fillTopLevels() (string, string) {
-	//for bot level > 0, pick ssts if count is more than levelMaxSST
-	pInfo := partitionInfoMap[compactInfo.partitionId]
+	//for bot level > 0, pick ssts if count is more than LevelCompactInf
+	pInfo := db.pMap[compactInfo.partitionId]
 	//pInfo.levelLock.RLock()
 	//defer pInfo.levelLock.RUnlock()
 
 	pInfo.readLock.RLock()
 	defer pInfo.readLock.RUnlock()
 
-	levelMax := DefaultConstants.levelMaxSST[compactInfo.thisLevel]
+	levelMax := LevelCompactInf[compactInfo.thisLevel]
 	thisLevelSSTSeqNums := pInfo.levelsInfo[compactInfo.thisLevel].sstSeqNums
 	nextLevelSSTSeqNums := pInfo.levelsInfo[compactInfo.nextLevel].sstSeqNums
 	thisLevelSortedSeqNums := pInfo.sortedSeqNums(thisLevelSSTSeqNums)
@@ -540,7 +540,7 @@ func overlap(sKey1, eKey1, sKey2, eKey2 string) bool {
 }
 
 func (compactInfo *CompactInfo) updateLevel() {
-	pInfo := partitionInfoMap[compactInfo.partitionId]
+	pInfo := db.pMap[compactInfo.partitionId]
 	//pInfo.levelLock.Lock()
 	//defer pInfo.levelLock.Unlock()
 
@@ -554,8 +554,8 @@ func (compactInfo *CompactInfo) updateLevel() {
 			partitionId: pInfo.partitionId,
 			levelNum:    compactInfo.nextLevel,
 			seqNum:      reader.SeqNm,
-			fop:         DefaultConstants.fileCreate,
-			fileType:    DefaultConstants.sstFileType,
+			fop:         fCreate,
+			fileType:    DataFileType,
 		}
 		writeManifest([]ManifestRec{mf1})
 	}

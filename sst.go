@@ -10,18 +10,12 @@ import (
 	"time"
 )
 
-const sstEncoderBufMetaLen = 1<<8 - 1 //1 byte(recType) + 16 bytes(ts)
-var sstBufLen = sstEncoderBufMetaLen + DefaultConstants.keyMaxLen + DefaultConstants.keyMaxLen
-
 type SSTRec struct {
 	recType byte
 	key     []byte
 	value   []byte
 	ts      uint64
 }
-
-var SSTDir = "data/dbstore"
-var SSTBaseFileName = "/sst_%d_%d.sst"
 
 type SSTWriter struct {
 	file        *os.File
@@ -41,7 +35,7 @@ func (pInfo *PartitionInfo) NewSSTWriter() (*SSTWriter, error) {
 
 func NewSSTWriter(partitionId int, seqNum uint32) (*SSTWriter, error) {
 
-	fileName := SSTDir + fmt.Sprintf(SSTBaseFileName, partitionId, seqNum)
+	fileName := db.config.DataDir + fmt.Sprintf(DataFileFmt, partitionId, seqNum)
 	file, err := os.OpenFile(fileName, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0600)
 
 	if err != nil {
@@ -108,8 +102,6 @@ type SSTReader struct {
 	noOfWriteReq uint32
 }
 
-var EmptyFile = errors.New("EmptyFile")
-
 func (writer *SSTWriter) NewSSTReader() (SSTReader, error) {
 	reader, err := NewSSTReader(writer.SeqNum, writer.partitionId)
 	if err != EmptyFile && err != nil {
@@ -124,7 +116,7 @@ func (writer *SSTWriter) NewSSTReader() (SSTReader, error) {
 }
 
 func NewSSTReader(seqNum uint32, partitionId int) (SSTReader, error) {
-	fileName := SSTDir + fmt.Sprintf(SSTBaseFileName, partitionId, seqNum)
+	fileName := db.config.DataDir + fmt.Sprintf(DataFileFmt, partitionId, seqNum)
 	size, err := fileSize(fileName)
 	if err == EmptyFile {
 		return SSTReader{}, EmptyFile
@@ -194,7 +186,7 @@ func (reader SSTReader) ReadRec(offset uint32) (uint32, SSTRec) {
 //this is invoked sequentially
 func (reader *SSTReader) loadSSTRec(idx *Index) (uint32, error) {
 	startT := time.Now()
-	defaultLogger.Info().Msgf("loading sst file: %s, partition: %d", reader.file.Name(), reader.partitionId)
+	db.logger.Info().Msgf("loading sst file: %s, partition: %d", reader.file.Name(), reader.partitionId)
 	var recsRead uint32 = 0
 	var readOffset uint32 = 0
 	iterator := reader.NewIterator()
@@ -206,7 +198,7 @@ func (reader *SSTReader) loadSSTRec(idx *Index) (uint32, error) {
 		}
 		keyHash := Hash(sstRec.key)
 		idRec, ok := idx.Get(keyHash)
-		if sstRec.recType == DefaultConstants.writeReq {
+		if sstRec.recType == WriteReq {
 			indexRec := IndexRec{
 				SSTRecOffset:  readOffset,
 				SSTFileSeqNum: reader.SeqNm,
@@ -230,7 +222,7 @@ func (reader *SSTReader) loadSSTRec(idx *Index) (uint32, error) {
 		reader.endKey = sstRec.key
 		recsRead++
 	}
-	defaultLogger.Info().Msgf("sst loading complete "+
+	db.logger.Info().Msgf("sst loading complete "+
 		"duration(sec): %f, file: %s, partitionId: %d, recs loaded: %d, "+
 		"delete-req: %d, write-req: %d, start-key: %s, end-key: %s",
 		time.Since(startT).Seconds(), reader.file.Name(), reader.partitionId, recsRead, reader.noOfDelReq,
@@ -251,7 +243,7 @@ func (reader SSTReader) Close() error {
 }
 
 func deleteSST(partitionId int, seqNum uint32) error {
-	fileName := SSTDir + fmt.Sprintf(SSTBaseFileName, partitionId, seqNum)
+	fileName := db.config.DataDir + fmt.Sprintf(DataFileFmt, partitionId, seqNum)
 	return os.Remove(fileName)
 }
 

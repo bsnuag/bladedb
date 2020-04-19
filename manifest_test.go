@@ -1,126 +1,81 @@
 package bladedb
 
 import (
-	"github.com/niubaoshu/gotiny"
 	"github.com/stretchr/testify/require"
+	"gopkg.in/yaml.v2"
 	"io/ioutil"
-	"log"
 	"os"
 	"testing"
 )
 
-func TestManifestReplay(t *testing.T) {
-	dir, err := ioutil.TempDir("", "manifestTest")
-	if err != nil {
-		log.Fatal(err)
+func setupManifestTest() (configFile string, tearTest func()) {
+	config := Config{LogFileMaxLen: DefaultLogFileMaxLen,
+		LogDir:              "manifestTestLog/",
+		DataDir:             "manifestTestSST/",
+		WalFlushPeriodInSec: 10,
+		CompactWorker:       0,
+		NoOfPartitions:      1,
+		MemFlushWorker:      0,
 	}
-	file, err := ioutil.TempFile(dir, "MANIFEST.*.txt")
-	defer os.Remove(file.Name())
-	defer os.RemoveAll(dir)
-
-	if err != nil {
-		log.Fatal(err)
-	}
-	//fmt.Println("Created File: " + file.Name())
-
-	manifestFile = &ManifestFile{
-		file:     file,
-		manifest: nil,
-	}
-	manifestRecs := getManifestRecs()
-
-	err = writeManifest(manifestRecs)
+	bytes, _ := yaml.Marshal(&config)
+	cFile, err := ioutil.TempFile("", "abcdef.yaml")
 	if err != nil {
 		panic(err)
 	}
-
-	err = replay()
-	if err != nil {
+	if _, err = cFile.Write(bytes); err != nil {
 		panic(err)
 	}
-	require.Equal(t, len(manifestRecs), len(manifestFile.manifest.sstManifest[0].manifestRecs)+len(manifestFile.manifest.logManifest[0].manifestRecs),
-		"total recs write and total recs read in replay should match")
+	if err = cFile.Close(); err != nil {
+		panic(err)
+	}
+
+	return cFile.Name(), func() {
+		os.RemoveAll(config.DataDir)
+		os.RemoveAll(config.LogDir)
+		os.RemoveAll(cFile.Name())
+		db = nil
+	}
 }
 
-func TestManifestWrite(t *testing.T) {
-	dir, err := ioutil.TempDir("", "manifestTest")
-	if err != nil {
-		log.Fatal(err)
-	}
-	file, err := ioutil.TempFile(dir, "MANIFEST.*.txt")
-	defer os.Remove(file.Name())
-	defer os.RemoveAll(dir)
-
-	if err != nil {
-		log.Fatal(err)
-	}
-	//fmt.Println("Created File: " + file.Name())
-
-	manifestFile = &ManifestFile{
-		file: file,
-	}
+func TestManifestReplay(t *testing.T) {
+	configFile, tearTest := setupManifestTest()
+	defer tearTest()
+	defer Drain()
+	Open(configFile)
 	manifestRecs := getManifestRecs()
-	writeManifest(manifestRecs)
 
-	file.Seek(0, 0)
-	b1 := make([]byte, 50)
-	b2 := make([]byte, 50)
-
-	_, err = file.Read(b1)
+	err := writeManifest(manifestRecs)
 	if err != nil {
 		panic(err)
 	}
-
-	_, err = file.Read(b2)
+	err, manifest := replayManifest()
 	if err != nil {
 		panic(err)
 	}
-
-	um1 := ManifestRec{}
-	um2 := ManifestRec{}
-	gotiny.Unmarshal(b1, &um1)
-	gotiny.Unmarshal(b2, &um2)
-
-	//fmt.Println("Unmarshal rec1: ", um1)
-	//fmt.Println("Unmarshal rec2: ", um2)
-
-	err = file.Close()
-	if err != nil {
-		panic(err)
-	}
-	require.Equal(t, manifestRecs[0], um1, "m1 doesn't match with um1")
-	require.Equal(t, manifestRecs[1], um2, "m2 doesn't match with um2")
+	defManifestRec := ManifestRec{partitionId: 0, seqNum: 1, levelNum: 0, fop: 0, fileType: 0}//written when DB is open()
+	require.Equal(t, len(manifestRecs)+1, len(manifest.sstManifest[0].manifestRecs)+len(manifest.logManifest[0].manifestRecs),
+		"total recs write and total recs read in replayManifest should match")
+	require.Equal(t, manifest.logManifest[0].manifestRecs[1], defManifestRec, "default log created while opening DB didn't match")
+	require.Equal(t, manifest.logManifest[0].manifestRecs[2], manifestRecs[0], "replayed manifest didn't match with written manifest")
+	require.Equal(t, manifest.sstManifest[0].manifestRecs[2], manifestRecs[1], "replayed manifest didn't match with written manifest")
 }
 
 func getManifestRecs() []ManifestRec {
 	m1 := ManifestRec{
 		partitionId: 0,
-		seqNum:      1,
+		seqNum:      2,
 		levelNum:    1,
-		fop:         DefaultConstants.fileCreate,
-		fileType:    0,
+		fop:         fCreate,
+		fileType:    LogFileType,
 	}
 
 	m2 := ManifestRec{
 		partitionId: 0,
 		seqNum:      2,
 		levelNum:    2,
-		fop:         DefaultConstants.fileDelete,
-		fileType:    1,
+		fop:         fDelete,
+		fileType:    DataFileType,
 	}
 
 	return []ManifestRec{m1, m2}
-}
-
-func TestInitManifest(t *testing.T) {
-	tempFile, _ := ioutil.TempFile("", "manifest_init_test_file")
-	ManifestFileName = tempFile.Name()
-	if err := initManifest(); err != nil {
-		panic(err)
-	}
-	defer func() {
-		os.Remove(ManifestFileName)
-		manifestFile = nil
-	}()
-	require.Nil(t, manifestFile.manifest, "Expected no manifest built on empty manifest file")
 }

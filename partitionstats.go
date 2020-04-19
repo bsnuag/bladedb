@@ -5,7 +5,7 @@ import "fmt"
 func PrintPartitionStats() {
 	fmt.Println("------------------------------------X Printing DB Stats X------------------------------------")
 
-	for partId, pInfo := range partitionInfoMap {
+	for partId, pInfo := range db.pMap {
 		fmt.Println(fmt.Sprintf("\n\n--------------- Stats for PartitionId: %d ---------------", partId))
 		fmt.Println(fmt.Sprintf("PartitionId: %d", partId))
 		fmt.Println(fmt.Sprintf("No of Keys in Index: %d", pInfo.index.Size()))
@@ -41,13 +41,13 @@ type PartitionStat struct {
 }
 
 func GetPartitionStats() []PartitionStat {
-	pStats := make([]PartitionStat, DefaultConstants.noOfPartitions)
-	for partitionId := 0; partitionId < DefaultConstants.noOfPartitions; partitionId++ {
+	pStats := make([]PartitionStat, db.config.NoOfPartitions)
+	for partitionId := 0; partitionId < db.config.NoOfPartitions; partitionId++ {
 		pStat := PartitionStat{
 			pId:               partitionId,
-			keys:              partitionInfoMap[partitionId].partitionNoOfKeys(),
-			inactiveMemTables: len(partitionInfoMap[partitionId].inactiveLogDetails),
-			sstCount:          int64(len(partitionInfoMap[partitionId].sstReaderMap)),
+			keys:              db.pMap[partitionId].partitionNoOfKeys(),
+			inactiveMemTables: len(db.pMap[partitionId].inactiveLogDetails),
+			sstCount:          int64(len(db.pMap[partitionId].sstReaderMap)),
 		}
 		pStats[partitionId] = pStat
 	}
