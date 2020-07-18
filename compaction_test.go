@@ -184,7 +184,6 @@ func TestFillLevels_level1WithOverlapButNoLevel2Data(t *testing.T) {
 
 func tempSSTReader(sKey string, eKey string, seqNum uint32, delReq uint32, writeReq uint32) *SSTReader {
 	return &SSTReader{
-		file:         nil,
 		SeqNm:        seqNum,
 		partitionId:  0,
 		startKey:     []byte(sKey),
@@ -231,8 +230,8 @@ func TestBuildCompactionBaseLevelAs1(t *testing.T) {
 	sReader1, sReader2 := prepareInputSSTs(partitionId, 0)
 
 	defer os.Remove(mFile.Name())
-	defer os.Remove(sReader1.file.Name())
-	defer os.Remove(sReader2.file.Name())
+	defer os.Remove(sReader1.fileName)
+	defer os.Remove(sReader2.fileName)
 	defer os.RemoveAll(dir)
 
 	compactInfo.botLevelSST = append(compactInfo.botLevelSST, &sReader1, &sReader2)
@@ -299,10 +298,10 @@ func TestBuildCompactionBaseLevelAs0(t *testing.T) {
 	db.pMap[partitionId].levelsInfo[1].sstSeqNums[3] = struct{}{}
 
 	defer os.Remove(mFile.Name())
-	defer os.Remove(sReader1.file.Name())
-	defer os.Remove(sReader1.file.Name())
-	defer os.Remove(sReader3.file.Name())
-	defer os.Remove(sReader4.file.Name())
+	defer os.Remove(sReader1.fileName)
+	defer os.Remove(sReader1.fileName)
+	defer os.Remove(sReader3.fileName)
+	defer os.Remove(sReader4.fileName)
 	defer os.RemoveAll(dir)
 
 	compactInfo.compact()
@@ -330,10 +329,10 @@ func TestBuildCompactionBaseLevelAs0(t *testing.T) {
 
 	db.pMap[partitionId].updatePartition()
 
-	_, e1 := fileSize(sReader1.file.Name())
-	_, e2 := fileSize(sReader2.file.Name())
-	_, e3 := fileSize(sReader3.file.Name())
-	_, e4 := fileSize(sReader4.file.Name())
+	_, e1 := fileSize(sReader1.fileName)
+	_, e2 := fileSize(sReader2.fileName)
+	_, e3 := fileSize(sReader3.fileName)
+	_, e4 := fileSize(sReader4.fileName)
 
 	require.True(t, len(db.pMap[partitionId].sstReaderMap) == 1, "post compaction expecting readers map size 1")
 	require.True(t, db.pMap[partitionId].index.Size() == 10, "post compaction expecting index size 10")
@@ -377,8 +376,8 @@ func TestHeapIterator(t *testing.T) {
 	sReader3, sReader4 := prepareInputSSTs(partitionId, 2)
 	compactInfo.botLevelSST = append(compactInfo.botLevelSST, &sReader3, &sReader4)
 
-	defer os.Remove(sReader1.file.Name())
-	defer os.Remove(sReader1.file.Name())
+	defer os.Remove(sReader1.fileName)
+	defer os.Remove(sReader1.fileName)
 	defer os.RemoveAll(dir)
 
 	compactInfo.buildHeap()

@@ -1,8 +1,8 @@
 data-dir: /tmp/bladedb.data/
 log-dir: /tmp/bladedb.log/
 log-flush-interval: 10
-partitions: 1
-compact-worker: 1
-memflush-worker: 1
+partitions: 8
+compact-worker: 2
+memflush-worker: 2
 log-level: info
 client-listen-port: 9099
