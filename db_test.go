@@ -66,7 +66,7 @@ func TestDBWrite_With_Reload_MemFlush(t *testing.T) {
 	wg.Add(1000)
 	for i := 0; i < 1000; i++ {
 		go func(j int) {
-			Remove([]byte(fmt.Sprintf("Key:%d", j)))
+			Delete([]byte(fmt.Sprintf("Key:%d", j)))
 			wg.Done()
 		}(i)
 	}

@@ -86,7 +86,7 @@ func PreparePartitionIdsMap() {
 			for _, key := range sortedKeys {
 				reader := pInfo.sstReaderMap[key]
 				if _, err := reader.loadSSTRec(pInfo.index); err != nil {
-					return errors.Wrapf(err, "Error while loading index from SST : %s", reader.file.Name())
+					return errors.Wrapf(err, "Error while loading index from SST : %s", reader.fileName)
 				}
 			}
 			return nil
@@ -199,7 +199,6 @@ func Drain() {
 		fmt.Println(err)
 	}
 	db = nil
-	//db.pMap = make(map[int]*PartitionInfo) //clear index map
 }
 
 // works similar to nodetool flush

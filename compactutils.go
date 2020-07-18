@@ -50,13 +50,13 @@ func isCompactionActive() bool {
 
 func (compactInfo *CompactInfo) compactFileNames() (botLevelSSTNames []string, topLevelSSTNames []string, newSSTNames []string) {
 	for _, reader := range compactInfo.botLevelSST {
-		botLevelSSTNames = append(botLevelSSTNames, reader.file.Name())
+		botLevelSSTNames = append(botLevelSSTNames, reader.fileName)
 	}
 	for _, reader := range compactInfo.topLevelSST {
-		topLevelSSTNames = append(topLevelSSTNames, reader.file.Name())
+		topLevelSSTNames = append(topLevelSSTNames, reader.fileName)
 	}
 	for _, reader := range compactInfo.newSSTReaders {
-		newSSTNames = append(newSSTNames, reader.file.Name())
+		newSSTNames = append(newSSTNames, reader.fileName)
 	}
 	return botLevelSSTNames, topLevelSSTNames, newSSTNames
 }
