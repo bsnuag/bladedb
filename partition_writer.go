@@ -6,7 +6,7 @@ import (
 	"github.com/pkg/errors"
 )
 
-func Remove(key []byte) (value []byte, err error) {
+func Delete(key []byte) (value []byte, err error) {
 	hash := Hash(key)
 	partitionId := PartitionId(hash[:])
 	pInfo := db.pMap[partitionId]

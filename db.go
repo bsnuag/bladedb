@@ -1,13 +1,16 @@
 package bladedb
 
 import (
+	"fmt"
 	"github.com/pkg/errors"
 	"gopkg.in/yaml.v2"
 	"io/ioutil"
+	"os"
 	"runtime"
 )
 
 var db *bladeDB = nil
+var ServerAddress = ""
 
 func Open(path string) {
 	runtime.GOMAXPROCS(100)
@@ -31,7 +34,9 @@ func loadConfigs(configPath string) {
 	db = &bladeDB{}
 	config := &Config{LogFileMaxLen: DefaultLogFileMaxLen}
 	yamlFile, err := ioutil.ReadFile(configPath)
-	if err != nil {
+	if os.IsNotExist(err) {
+		panic(fmt.Sprintf("could not locate config file: %s", configPath))
+	} else if err != nil {
 		panic(errors.Wrapf(err, "could not load config file: %s", configPath))
 	}
 	err = yaml.Unmarshal(yamlFile, config)
@@ -45,6 +50,7 @@ func loadConfigs(configPath string) {
 	db.logEncoderBuf = make([]byte, uint32(db.config.NoOfPartitions)*LogEncoderPartLen) //this can be moved to other method
 	db.walFlushQueue = make(chan bool)
 	db.pMap = make(map[int]*PartitionInfo)
+	ServerAddress = fmt.Sprintf("0.0.0.0:%d", db.config.ClientListenPort)
 }
 
 func validateConfig(config *Config) error {

@@ -29,6 +29,7 @@ func memFlushWorker(flushWorkerName string) {
 			db.logger.Info().Msgf("Received signal to stop mem flush worker, exiting: %s", flushWorkerName)
 			break
 		}
+		db.logger.Info().Msgf("pending mem flush: %d", len(db.memFlushTaskQueue))
 		start := time.Now()
 		pInfo := db.pMap[memTask.PartitionId]
 		if pInfo == nil {

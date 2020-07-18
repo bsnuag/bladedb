@@ -29,7 +29,7 @@ func (*BladeDBServer) Get(ctx context.Context, request *proto.GetRequest) (*prot
 
 	response := &proto.GetResponse{
 		Key:   request.Key,
-		Value: nil,
+		Value: value,
 	}
 	return response, nil
 }
@@ -49,7 +49,7 @@ func (*BladeDBServer) Set(ctx context.Context, request *proto.SetRequest) (*prot
 }
 
 func (*BladeDBServer) Del(ctx context.Context, request *proto.DelRequest) (*proto.DelResponse, error) {
-	value, err := bladedb.Remove([]byte(request.Key))
+	value, err := bladedb.Delete([]byte(request.Key))
 
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, "error while deleting key: %v error: %v", request.Key, err)

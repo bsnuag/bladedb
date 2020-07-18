@@ -46,7 +46,7 @@ func TestPartition_Delete_Write_Read_CountVerify(t *testing.T) {
 	Open(configFile)
 
 	for i := 0; i < 1000; i++ {
-		value, _ := Remove([]byte(fmt.Sprintf("Key:%d", i)))
+		value, _ := Delete([]byte(fmt.Sprintf("Key:%d", i)))
 		require.Nil(t, value) //no write so result for delete should be nil
 	}
 
@@ -55,7 +55,7 @@ func TestPartition_Delete_Write_Read_CountVerify(t *testing.T) {
 	}
 
 	for i := 9000; i < 10000; i++ {
-		value, _ := Remove([]byte(fmt.Sprintf("Key:%d", i)))
+		value, _ := Delete([]byte(fmt.Sprintf("Key:%d", i)))
 		require.NotNil(t, value)
 	}
 
@@ -89,7 +89,7 @@ func TestPartition_Delete_Write_Read_CountVerify_WithFlush(t *testing.T) {
 	Open(configFile)
 
 	for i := 0; i < 1000; i++ {
-		value, _ := Remove([]byte(fmt.Sprintf("Key:%d", i)))
+		value, _ := Delete([]byte(fmt.Sprintf("Key:%d", i)))
 		require.Nil(t, value) //no write so result for delete should be nil
 	}
 
@@ -98,7 +98,7 @@ func TestPartition_Delete_Write_Read_CountVerify_WithFlush(t *testing.T) {
 	}
 
 	for i := 9000; i < 10000; i++ {
-		value, _ := Remove([]byte(fmt.Sprintf("Key:%d", i)))
+		value, _ := Delete([]byte(fmt.Sprintf("Key:%d", i)))
 		require.NotNil(t, value)
 	}
 
@@ -133,7 +133,7 @@ func TestPartition_Delete_Write_Read_CountVerify_WithFlush(t *testing.T) {
 	//at this point all keys are in index and no data in memtable (active and inactive-list)
 	//remove few keys now
 	for i := 0; i < 1000; i++ {
-		value, _ := Remove([]byte(fmt.Sprintf("Key:%d", i)))
+		value, _ := Delete([]byte(fmt.Sprintf("Key:%d", i)))
 		require.NotNil(t, value)
 	}
 
@@ -163,7 +163,7 @@ func TestPartition_Delete_Write_Read_CountVerify_Flush_With0FlushWorker(t *testi
 	Open(configFile)
 
 	for i := 0; i < 1000; i++ {
-		value, _ := Remove([]byte(fmt.Sprintf("Key:%d", i)))
+		value, _ := Delete([]byte(fmt.Sprintf("Key:%d", i)))
 		require.Nil(t, value) //no write so result for delete should be nil
 	}
 
@@ -172,7 +172,7 @@ func TestPartition_Delete_Write_Read_CountVerify_Flush_With0FlushWorker(t *testi
 	}
 
 	for i := 9000; i < 10000; i++ {
-		value, _ := Remove([]byte(fmt.Sprintf("Key:%d", i)))
+		value, _ := Delete([]byte(fmt.Sprintf("Key:%d", i)))
 		require.NotNil(t, value)
 	}
 
@@ -206,7 +206,7 @@ func TestPartition_Delete_Write_Read_CountVerify_Flush_With0FlushWorker(t *testi
 	//at this point all keys are in inactive memtable
 	//this write will go to active memtable
 	for i := 0; i < 1000; i++ {
-		value, _ := Remove([]byte(fmt.Sprintf("Key:%d", i)))
+		value, _ := Delete([]byte(fmt.Sprintf("Key:%d", i)))
 		require.NotNil(t, value)
 	}
 

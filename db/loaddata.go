@@ -24,7 +24,7 @@ var startTime = time.Now()
 func main() {
 	runtime.GOMAXPROCS(100)
 	noOfClient = 100
-	noOfWrite = 1000000
+	noOfWrite = 1000
 	writePerClient := noOfWrite / noOfClient
 	start := 0
 	wg.Add(noOfClient)

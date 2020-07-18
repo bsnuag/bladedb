@@ -20,8 +20,8 @@ func setupSSTTest(partitionId int) (s1 SSTReader, s2 SSTReader, tearTest func())
 	db.config.DataDir = dir
 	sReader1, sReader2 := prepareInputSSTs(partitionId, 0)
 	return sReader1, sReader2, func() {
-		os.Remove(sReader1.file.Name())
-		os.Remove(sReader2.file.Name())
+		os.Remove(sReader1.fileName)
+		os.Remove(sReader2.fileName)
 		os.RemoveAll(db.config.DataDir)
 		db = nil
 	}
