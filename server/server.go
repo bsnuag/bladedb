@@ -77,5 +77,7 @@ func StartServer(address string) error {
 }
 
 func StopServer() {
-	activeServer.GracefulStop()
+	if activeServer != nil {
+		activeServer.GracefulStop()
+	}
 }
